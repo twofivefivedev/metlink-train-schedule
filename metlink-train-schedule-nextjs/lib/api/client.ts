@@ -3,8 +3,13 @@
  * Handles all API communication with the backend
  */
 
-import { getApiBaseUrl } from '@/lib/config/env';
+import { getApiBaseUrl, shouldUseMockData } from '@/lib/config/env';
 import type { ApiResponse, DeparturesResponse, StationDeparturesResponse } from '@/types';
+import {
+  getLineDeparturesMock,
+  getStationDeparturesMock,
+  healthCheckMock,
+} from './mockClient';
 
 const API_BASE = getApiBaseUrl();
 
@@ -63,6 +68,11 @@ export async function getLineDepartures(
   line: string = 'WRL',
   stations?: string[]
 ): Promise<ApiResponse<DeparturesResponse>> {
+  // Use mock data if enabled
+  if (shouldUseMockData()) {
+    return getLineDeparturesMock(line, stations);
+  }
+  
   const params = new URLSearchParams({ line });
   if (stations && stations.length > 0) {
     params.append('stations', stations.join(','));
@@ -86,6 +96,11 @@ export async function getStationDepartures(
   stationId: string,
   line?: string
 ): Promise<ApiResponse<StationDeparturesResponse>> {
+  // Use mock data if enabled
+  if (shouldUseMockData()) {
+    return getStationDeparturesMock(stationId, line);
+  }
+  
   const url = line 
     ? `/api/station/${stationId}?line=${line}`
     : `/api/station/${stationId}`;
@@ -96,6 +111,11 @@ export async function getStationDepartures(
  * Health check
  */
 export async function healthCheck(): Promise<ApiResponse<{ status: string; timestamp: string }>> {
+  // Use mock data if enabled
+  if (shouldUseMockData()) {
+    return healthCheckMock();
+  }
+  
   return fetchWithRetry<{ status: string; timestamp: string }>('/api/health');
 }
 

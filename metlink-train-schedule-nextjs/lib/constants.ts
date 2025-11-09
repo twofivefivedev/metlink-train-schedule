@@ -255,10 +255,13 @@ export function getServiceIdFromLineCode(lineCode: string): LineCode {
 }
 
 // Cache Configuration
+// Cache duration set to 5 minutes to match polling interval (5 minutes)
+// This ensures cached data is reused for client polls, reducing API calls
+// Train schedules don't change frequently, so 5-minute cache is acceptable
 export const CACHE_DURATION = {
-  DEFAULT: 1 * 60 * 1000, // 1 minute in milliseconds
+  DEFAULT: 5 * 60 * 1000, // 5 minutes in milliseconds (matches 5-minute polling)
   MIN: 30 * 1000, // 30 seconds minimum
-  MAX: 5 * 60 * 1000, // 5 minutes maximum
+  MAX: 10 * 60 * 1000, // 10 minutes maximum
 } as const;
 
 // API Configuration
@@ -278,10 +281,12 @@ export const DIRECTIONS = {
 export const WELLINGTON_STOPS = ['WELL'] as const;
 
 // Refresh intervals (in milliseconds)
+// Increased default polling to 5 minutes - train schedules don't change frequently
+// Users can still manually refresh for immediate updates
 export const REFRESH_INTERVALS = {
-  DEFAULT: 2 * 60 * 1000, // 2 minutes
-  FAST: 30 * 1000, // 30 seconds
-  SLOW: 5 * 60 * 1000, // 5 minutes
+  DEFAULT: 5 * 60 * 1000, // 5 minutes (reduced from 2 minutes to minimize API calls)
+  FAST: 30 * 1000, // 30 seconds (for manual refresh or high-frequency needs)
+  SLOW: 10 * 60 * 1000, // 10 minutes (for low-frequency monitoring)
 } as const;
 
 // Maximum number of departures to display

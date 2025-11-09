@@ -28,10 +28,11 @@ interface UseTrainScheduleReturn {
 interface UseTrainScheduleOptions {
   line?: LineCode;
   stations?: string[];
+  autoRefresh?: boolean; // Enable/disable automatic polling (default: true)
 }
 
 export function useTrainSchedule(options: UseTrainScheduleOptions = {}): UseTrainScheduleReturn {
-  const { line = DEFAULT_LINE, stations } = options;
+  const { line = DEFAULT_LINE, stations, autoRefresh = true } = options;
   const [departures, setDepartures] = useState<{ inbound: Departure[]; outbound: Departure[] }>({
     inbound: [],
     outbound: [],
@@ -45,6 +46,7 @@ export function useTrainSchedule(options: UseTrainScheduleOptions = {}): UseTrai
   } | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isVisible, setIsVisible] = useState(true);
 
   const fetchSchedule = useCallback(async (isRefresh = false) => {
     try {
@@ -91,21 +93,46 @@ export function useTrainSchedule(options: UseTrainScheduleOptions = {}): UseTrai
     }
   }, [line, stations]);
 
+  // Handle visibility change to pause polling when tab is hidden
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsVisible(!document.hidden);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    setIsVisible(!document.hidden);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   useEffect(() => {
     // Initial fetch
     fetchSchedule(false);
 
-    // Set up auto-refresh
-    intervalRef.current = setInterval(() => {
-      fetchSchedule(true);
-    }, REFRESH_INTERVALS.DEFAULT);
+    // Set up auto-refresh only if enabled
+    if (autoRefresh) {
+      // Clear any existing interval
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+      
+      // Start polling - will only execute when tab is visible
+      intervalRef.current = setInterval(() => {
+        // Only poll if tab is visible
+        if (isVisible) {
+          fetchSchedule(true);
+        }
+      }, REFRESH_INTERVALS.DEFAULT);
+    }
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [fetchSchedule, line, stations]);
+  }, [fetchSchedule, line, stations, autoRefresh, isVisible]);
 
   return {
     departures,

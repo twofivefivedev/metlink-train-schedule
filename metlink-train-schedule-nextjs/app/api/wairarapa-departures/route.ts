@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { SERVICE_IDS, getDefaultStationsForLine, type LineCode, getServiceIdFromLineCode } from '@/lib/constants';
-import { getMultipleStationDepartures } from '@/lib/server/metlinkService';
+import { getMultipleStationDepartures, getRequestMetrics } from '@/lib/server/metlinkService';
 import { processDepartures } from '@/lib/server/departureService';
 import { cache } from '@/lib/server/cache';
 import { success } from '@/lib/server/response';
@@ -51,9 +51,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const metricsBefore = getRequestMetrics();
+    
     logger.info('Cache expired or empty, fetching fresh data', {
       stations: cacheKey,
       line: serviceId,
+      estimatedApiCalls: stationCodes.length, // Each station may trigger 1-3 API calls
     });
 
     // Fetch data from specified stations for the specified line
@@ -65,10 +68,15 @@ export async function GET(request: NextRequest) {
     // Process and organize departures
     const { inbound, outbound, total } = processDepartures(stationResults);
 
+    const metricsAfter = getRequestMetrics();
+    const apiCallsMade = metricsAfter.totalRequests - metricsBefore.totalRequests;
+
     logger.info('Fetched fresh departures', {
       inbound: inbound.length,
       outbound: outbound.length,
       total,
+      apiCallsMade,
+      totalRequestsThisHour: metricsAfter.requestsThisHour,
     });
 
     // Cache the result

@@ -11,6 +11,76 @@ import { logger } from './logger';
 import type { Departure, MetlinkApiResponse } from '@/types';
 
 /**
+ * Request metrics tracker
+ * Tracks API call volume to monitor usage and prevent rate limiting
+ */
+class RequestMetrics {
+  private requestCount: number = 0;
+  private requestCountByHour: Map<number, number> = new Map();
+
+  /**
+   * Increment request counter
+   */
+  increment(): void {
+    this.requestCount++;
+    const currentHour = Math.floor(Date.now() / (60 * 60 * 1000));
+    const currentCount = this.requestCountByHour.get(currentHour) || 0;
+    this.requestCountByHour.set(currentHour, currentCount + 1);
+    
+    // Log metrics periodically (every 10 requests)
+    if (this.requestCount % 10 === 0) {
+      this.logMetrics();
+    }
+  }
+
+  /**
+   * Get current request count
+   */
+  getCount(): number {
+    return this.requestCount;
+  }
+
+  /**
+   * Get requests in the current hour
+   */
+  getCurrentHourCount(): number {
+    const currentHour = Math.floor(Date.now() / (60 * 60 * 1000));
+    return this.requestCountByHour.get(currentHour) || 0;
+  }
+
+  /**
+   * Log metrics summary
+   */
+  private logMetrics(): void {
+    const currentHourCount = this.getCurrentHourCount();
+    logger.info('API Request Metrics', {
+      totalRequests: this.requestCount,
+      requestsThisHour: currentHourCount,
+      estimatedHourlyRate: currentHourCount * 60, // Extrapolate from current count
+    });
+  }
+
+  /**
+   * Get metrics summary
+   */
+  getMetrics(): {
+    totalRequests: number;
+    requestsThisHour: number;
+    estimatedHourlyRate: number;
+  } {
+    const currentHourCount = this.getCurrentHourCount();
+    return {
+      totalRequests: this.requestCount,
+      requestsThisHour: currentHourCount,
+      estimatedHourlyRate: currentHourCount * 60, // Rough estimate
+    };
+  }
+}
+
+// Singleton instance
+const requestMetrics = new RequestMetrics();
+
+/**
  * Create axios instance with default configuration
  */
 const metlinkClient: AxiosInstance = axios.create({
@@ -27,6 +97,9 @@ const metlinkClient: AxiosInstance = axios.create({
  */
 export async function getStopPredictions(stopId: string): Promise<MetlinkApiResponse> {
   try {
+    // Track API request
+    requestMetrics.increment();
+    
     const response = await retry(
       () => metlinkClient.get<MetlinkApiResponse>(`/stop-predictions?stop_id=${stopId}`),
       {
@@ -43,11 +116,23 @@ export async function getStopPredictions(stopId: string): Promise<MetlinkApiResp
       }
     );
 
+    logger.debug(`Fetched stop predictions for ${stopId}`, {
+      requestCount: requestMetrics.getCount(),
+      requestsThisHour: requestMetrics.getCurrentHourCount(),
+    });
+
     return response.data;
   } catch (error) {
     logger.error(`Failed to fetch stop predictions for ${stopId}`, error as Error);
     throw error;
   }
+}
+
+/**
+ * Get request metrics for monitoring
+ */
+export function getRequestMetrics() {
+  return requestMetrics.getMetrics();
 }
 
 /**
