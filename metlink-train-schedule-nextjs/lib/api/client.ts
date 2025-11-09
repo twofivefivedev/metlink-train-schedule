@@ -3,9 +3,10 @@
  * Handles all API communication with the backend
  */
 
+import { getApiBaseUrl } from '@/lib/config/env';
 import type { ApiResponse, DeparturesResponse, StationDeparturesResponse } from '@/types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '';
+const API_BASE = getApiBaseUrl();
 
 /**
  * Fetch data from API with retry logic
@@ -14,7 +15,9 @@ async function fetchWithRetry<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
-  const url = `${API_BASE}${endpoint}`;
+  // Ensure endpoint starts with /
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = API_BASE ? `${API_BASE}${normalizedEndpoint}` : normalizedEndpoint;
   const maxRetries = 3;
   const baseDelay = 1000;
 
@@ -54,17 +57,39 @@ async function fetchWithRetry<T>(
 }
 
 /**
- * Get all Wairarapa departures
+ * Get all departures for a specific line
+ */
+export async function getLineDepartures(
+  line: string = 'WRL',
+  stations?: string[]
+): Promise<ApiResponse<DeparturesResponse>> {
+  const params = new URLSearchParams({ line });
+  if (stations && stations.length > 0) {
+    params.append('stations', stations.join(','));
+  }
+  return fetchWithRetry<DeparturesResponse>(`/api/wairarapa-departures?${params.toString()}`);
+}
+
+/**
+ * Get all Wairarapa departures (backward compatibility)
  */
 export async function getWairarapaDepartures(): Promise<ApiResponse<DeparturesResponse>> {
-  return fetchWithRetry<DeparturesResponse>('/api/wairarapa-departures');
+  return getLineDepartures('WRL');
 }
 
 /**
  * Get departures for a specific station
+ * @param stationId - The station ID (normalized, e.g., 'WELL', 'PETO')
+ * @param line - Optional line code (WRL, KPL, HVL, JVL). Defaults to 'WRL' for backward compatibility.
  */
-export async function getStationDepartures(stationId: string): Promise<ApiResponse<StationDeparturesResponse>> {
-  return fetchWithRetry<StationDeparturesResponse>(`/api/station/${stationId}`);
+export async function getStationDepartures(
+  stationId: string,
+  line?: string
+): Promise<ApiResponse<StationDeparturesResponse>> {
+  const url = line 
+    ? `/api/station/${stationId}?line=${line}`
+    : `/api/station/${stationId}`;
+  return fetchWithRetry<StationDeparturesResponse>(url);
 }
 
 /**

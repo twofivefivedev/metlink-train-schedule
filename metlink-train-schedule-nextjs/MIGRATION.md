@@ -22,33 +22,34 @@ The migration consolidates two separate projects into a single Next.js applicati
 
 #### Backend Migration
 
-| Old Location | New Location |
-|--------------|--------------|
-| `wairarapa-api/server.js` | `app/api/*/route.ts` |
-| `wairarapa-api/routes/departures.js` | `app/api/wairarapa-departures/route.ts` |
-| `wairarapa-api/routes/health.js` | `app/api/health/route.ts` |
-| `wairarapa-api/services/metlinkService.js` | `lib/server/metlinkService.ts` |
-| `wairarapa-api/services/departureService.js` | `lib/server/departureService.ts` |
-| `wairarapa-api/utils/logger.js` | `lib/server/logger.ts` |
-| `wairarapa-api/utils/retry.js` | `lib/server/retry.ts` |
-| `wairarapa-api/middleware/cache.js` | `lib/server/cache.ts` |
-| `wairarapa-api/config/constants.js` | `lib/constants.ts` |
+| Old Location                                 | New Location                            |
+| -------------------------------------------- | --------------------------------------- |
+| `wairarapa-api/server.js`                    | `app/api/*/route.ts`                    |
+| `wairarapa-api/routes/departures.js`         | `app/api/wairarapa-departures/route.ts` |
+| `wairarapa-api/routes/health.js`             | `app/api/health/route.ts`               |
+| `wairarapa-api/services/metlinkService.js`   | `lib/server/metlinkService.ts`          |
+| `wairarapa-api/services/departureService.js` | `lib/server/departureService.ts`        |
+| `wairarapa-api/utils/logger.js`              | `lib/server/logger.ts`                  |
+| `wairarapa-api/utils/retry.js`               | `lib/server/retry.ts`                   |
+| `wairarapa-api/middleware/cache.js`          | `lib/server/cache.ts`                   |
+| `wairarapa-api/config/constants.js`          | `lib/constants.ts`                      |
 
 #### Frontend Migration
 
-| Old Location | New Location |
-|--------------|--------------|
-| `wairarapa-train-schedule/src/App.js` | `app/page.tsx` |
-| `wairarapa-train-schedule/src/components/TrainSchedule.js` | `app/page.tsx` (merged) |
-| `wairarapa-train-schedule/src/components/*.jsx` | `components/*.tsx` |
-| `wairarapa-train-schedule/src/hooks/useTrainSchedule.js` | `hooks/useTrainSchedule.ts` |
-| `wairarapa-train-schedule/src/services/apiService.js` | `lib/api/client.ts` |
-| `wairarapa-train-schedule/src/utils/departureUtils.js` | `lib/utils/departureUtils.ts` |
-| `wairarapa-train-schedule/src/config/constants.js` | `lib/constants.ts` (merged) |
+| Old Location                                               | New Location                  |
+| ---------------------------------------------------------- | ----------------------------- |
+| `wairarapa-train-schedule/src/App.js`                      | `app/page.tsx`                |
+| `wairarapa-train-schedule/src/components/TrainSchedule.js` | `app/page.tsx` (merged)       |
+| `wairarapa-train-schedule/src/components/*.jsx`            | `components/*.tsx`            |
+| `wairarapa-train-schedule/src/hooks/useTrainSchedule.js`   | `hooks/useTrainSchedule.ts`   |
+| `wairarapa-train-schedule/src/services/apiService.js`      | `lib/api/client.ts`           |
+| `wairarapa-train-schedule/src/utils/departureUtils.js`     | `lib/utils/departureUtils.ts` |
+| `wairarapa-train-schedule/src/config/constants.js`         | `lib/constants.ts` (merged)   |
 
 ### Type Definitions
 
 New `types/index.ts` file contains all TypeScript interfaces:
+
 - `Departure`
 - `DeparturesResponse`
 - `StationDeparturesResponse`
@@ -60,23 +61,25 @@ New `types/index.ts` file contains all TypeScript interfaces:
 
 The environment variable structure remains the same, but now uses Next.js conventions:
 
-| Variable | Old Location | New Location |
-|----------|--------------|--------------|
-| `METLINK_API_KEY` | `wairarapa-api/.env` | `.env.local` (root) |
-| `PORT` | `wairarapa-api/.env` | Not needed (Next.js handles) |
-| `NODE_ENV` | `wairarapa-api/.env` | Automatic in Next.js |
+| Variable          | Old Location         | New Location                 |
+| ----------------- | -------------------- | ---------------------------- |
+| `METLINK_API_KEY` | `wairarapa-api/.env` | `.env.local` (root)          |
+| `PORT`            | `wairarapa-api/.env` | Not needed (Next.js handles) |
+| `NODE_ENV`        | `wairarapa-api/.env` | Automatic in Next.js         |
 
 ### API Client Changes
 
 **Old (CRA)**:
+
 ```javascript
-import { getWairarapaDepartures } from '../services/apiService';
+import { getWairarapaDepartures } from "../services/apiService";
 // Used BASE_URL from config
 ```
 
 **New (Next.js)**:
+
 ```typescript
-import { getWairarapaDepartures } from '@/lib/api/client';
+import { getWairarapaDepartures } from "@/lib/api/client";
 // Uses relative URLs (same-origin) or NEXT_PUBLIC_API_BASE
 ```
 
@@ -105,6 +108,51 @@ interface UseTrainScheduleReturn {
 }
 ```
 
+## CI/CD Pipeline
+
+### GitHub Actions Workflow
+
+A CI/CD pipeline has been set up using GitHub Actions (`.github/workflows/ci.yml`) that:
+
+1. **Lint and Test**: Runs ESLint, TypeScript type checking, and Jest tests on every push and PR
+2. **Build**: Verifies the application builds successfully
+3. **Coverage**: Uploads test coverage reports to Codecov (optional)
+
+### Workflow Steps
+
+- **Lint**: Runs `npm run lint` to check code quality
+- **Type Check**: Runs `npm run type-check` to verify TypeScript types
+- **Test**: Runs `npm test -- --coverage` to execute unit tests
+- **Build**: Runs `npm run build` to verify production build
+
+### Environment Variables for CI
+
+The workflow uses GitHub Secrets for environment variables:
+
+- `METLINK_API_KEY`: API key for Metlink API
+- `METLINK_API_BASE`: Base URL for Metlink API (optional, defaults to production)
+- `NEXT_PUBLIC_API_BASE_URL`: Public API base URL (optional)
+- `SENTRY_DSN`: Sentry DSN for error tracking (optional)
+- `NEXT_PUBLIC_SENTRY_DSN`: Public Sentry DSN (optional)
+
+### Staging Deployment
+
+For staging/preview deployments:
+
+1. **Vercel Integration**: Connect GitHub repository to Vercel
+2. **Preview Deployments**: Automatically created for each PR
+3. **Staging Branch**: Create a `staging` branch for dedicated staging environment
+4. **Environment Variables**: Set staging-specific variables in Vercel dashboard
+
+### Branch Protection
+
+Recommended branch protection rules:
+
+- Require status checks to pass before merging
+- Require `lint-and-test` and `build` jobs to pass
+- Require PR reviews (optional)
+- Require branches to be up to date before merging
+
 ## Deployment Changes
 
 ### Old Setup
@@ -117,6 +165,7 @@ interface UseTrainScheduleReturn {
 - **Unified**: Single Next.js application deployed to Vercel
 - **API Routes**: Automatically converted to serverless functions
 - **Environment Variables**: Set in Vercel dashboard (same variables)
+- **CI/CD**: Automated testing and building via GitHub Actions
 
 ## Migration Steps
 
@@ -178,7 +227,7 @@ If issues occur, you can rollback by:
 ## Support
 
 For issues or questions about the migration, refer to:
+
 - Next.js documentation: https://nextjs.org/docs
 - TypeScript documentation: https://www.typescriptlang.org/docs
 - Project README: `README.md`
-

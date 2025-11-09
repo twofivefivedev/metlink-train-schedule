@@ -29,7 +29,7 @@ export function DepartureRow({ departure, isMobile = false }: DepartureRowProps)
         <div className="flex justify-between items-start mb-3">
           <div className="flex-1">
             <div className="font-semibold text-foreground text-base mb-1">
-              {getStationName(departure.station)}
+              {getStationName(departure.station).replace(' Station', '')}
             </div>
             <div className="text-sm text-muted-foreground flex items-center">
               {isBus && <span className="mr-2">🚌</span>}
@@ -62,17 +62,19 @@ export function DepartureRow({ departure, isMobile = false }: DepartureRowProps)
   return (
     <tr className="hover:bg-muted/50 transition-colors">
       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
-        {getStationName(departure.station)}
+        {getStationName(departure.station).replace(' Station', '')}
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground text-center">
         {isBus && <span className="mr-2">🚌</span>}
         {route}
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
+        <div>
         {formatTime(departureTime)}
         {departure.departure?.expected && (
           <span className="text-xs text-primary ml-2 font-medium">(Live)</span>
         )}
+        </div>
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
         <div className="flex items-center gap-2">

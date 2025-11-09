@@ -1,10 +1,11 @@
 /**
  * GET /api/station/[stationId]
  * Get departures for a specific station
+ * Supports optional line query parameter for filtering by train line
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { STATIONS, SERVICE_IDS } from '@/lib/constants';
+import { STATION_NAMES, type LineCode, getServiceIdFromLineCode } from '@/lib/constants';
 import { getWairarapaDepartures } from '@/lib/server/metlinkService';
 import { success, validationError } from '@/lib/server/response';
 import { logger } from '@/lib/server/logger';
@@ -17,27 +18,35 @@ export async function GET(
     const { stationId } = await params;
     const upperStationId = stationId.toUpperCase();
 
-    // Validate station ID
-    if (!Object.values(STATIONS).includes(upperStationId as typeof STATIONS[keyof typeof STATIONS])) {
+    // Get line from query params or use default (WRL for backward compatibility)
+    const searchParams = request.nextUrl.searchParams;
+    const lineParam = searchParams.get('line') || 'WRL';
+    
+    // Validate line code and get service ID
+    const serviceId = getServiceIdFromLineCode(lineParam);
+
+    // Validate station ID - check if it exists in station names (more flexible)
+    if (!STATION_NAMES[upperStationId]) {
       return NextResponse.json(
         validationError('Invalid station ID', {
           provided: stationId,
-          validStations: Object.values(STATIONS),
+          validStations: Object.keys(STATION_NAMES),
         }),
         { status: 400 }
       );
     }
 
-    logger.info(`Fetching departures for station: ${upperStationId}`);
+    logger.info(`Fetching departures for station: ${upperStationId}, line: ${serviceId}`);
 
-    // Fetch departures for the station
+    // Fetch departures for the station with the specified line/service ID
     const departures = await getWairarapaDepartures(
       upperStationId,
-      SERVICE_IDS.WAIRARAPA_LINE
+      serviceId
     );
 
     return NextResponse.json(success({
       station: upperStationId,
+      line: serviceId,
       departures,
       total: departures.length,
     }));

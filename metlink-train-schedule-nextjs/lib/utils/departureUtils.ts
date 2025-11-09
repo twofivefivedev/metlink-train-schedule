@@ -142,3 +142,44 @@ export function getImportantNotices(departure: Departure): string | null {
   return notices.length > 0 ? notices.join(', ') : null;
 }
 
+/**
+ * Calculate wait time until next departure
+ * Returns minutes until the departure, or null if departure is in the past or cancelled
+ */
+export function calculateWaitTime(
+  departure: Departure,
+  currentTime: Date = new Date()
+): {
+  minutes: number | null;
+  displayText: string;
+} {
+  const status = (departure as unknown as { status?: string }).status;
+  if (status === 'canceled' || status === 'cancelled') {
+    return { minutes: null, displayText: 'Cancelled' };
+  }
+
+  // Use expected time if available, otherwise use scheduled time
+  const departureTime = departure.departure?.expected || departure.departure?.aimed;
+  if (!departureTime) {
+    return { minutes: null, displayText: 'Time unknown' };
+  }
+
+  const departureDate = new Date(departureTime);
+  const diffMs = departureDate.getTime() - currentTime.getTime();
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+  // If departure is in the past, return null
+  if (diffMinutes < 0) {
+    return { minutes: null, displayText: 'Departed' };
+  }
+
+  // Format display text
+  if (diffMinutes === 0) {
+    return { minutes: 0, displayText: 'Now' };
+  } else if (diffMinutes === 1) {
+    return { minutes: 1, displayText: '1 minute' };
+  } else {
+    return { minutes: diffMinutes, displayText: `${diffMinutes} minutes` };
+  }
+}
+

@@ -1,14 +1,19 @@
 /**
  * In-memory cache for API responses
+ * Supports multiple cache keys for different station combinations
  */
 
 import { logger } from './logger';
 import { CACHE_DURATION } from '@/lib/constants';
 import type { DeparturesResponse, CacheInfo } from '@/types';
 
+interface CacheEntry {
+  data: DeparturesResponse;
+  timestamp: number;
+}
+
 class Cache {
-  private data: DeparturesResponse | null = null;
-  private timestamp: number | null = null;
+  private cache: Map<string, CacheEntry> = new Map();
   private duration: number;
 
   constructor() {
@@ -22,48 +27,58 @@ class Cache {
     );
   }
 
-  isValid(): boolean {
-    if (!this.data || !this.timestamp) {
+  isValid(key: string = 'default'): boolean {
+    const entry = this.cache.get(key);
+    if (!entry) {
       return false;
     }
-    const age = Date.now() - this.timestamp;
+    const age = Date.now() - entry.timestamp;
     return age < this.duration;
   }
 
-  get(): DeparturesResponse | null {
-    if (!this.isValid()) {
+  get(key: string = 'default'): DeparturesResponse | null {
+    if (!this.isValid(key)) {
       return null;
     }
-    return this.data;
+    return this.cache.get(key)?.data || null;
   }
 
-  set(data: DeparturesResponse): void {
-    this.data = data;
-    this.timestamp = Date.now();
+  set(data: DeparturesResponse, key: string = 'default'): void {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now(),
+    });
     logger.debug('Cache updated', {
+      key,
       duration: this.duration / 1000,
-      timestamp: new Date(this.timestamp).toISOString(),
+      timestamp: new Date().toISOString(),
     });
   }
 
-  clear(): void {
-    this.data = null;
-    this.timestamp = null;
-    logger.debug('Cache cleared');
+  clear(key?: string): void {
+    if (key) {
+      this.cache.delete(key);
+      logger.debug('Cache cleared', { key });
+    } else {
+      this.cache.clear();
+      logger.debug('Cache cleared (all keys)');
+    }
   }
 
-  getAge(): number | null {
-    if (!this.timestamp) {
+  getAge(key: string = 'default'): number | null {
+    const entry = this.cache.get(key);
+    if (!entry) {
       return null;
     }
-    return Math.round((Date.now() - this.timestamp) / 1000);
+    return Math.round((Date.now() - entry.timestamp) / 1000);
   }
 
-  getInfo(): CacheInfo {
+  getInfo(key: string = 'default'): CacheInfo {
+    const entry = this.cache.get(key);
     return {
-      hasData: !!this.data,
-      isValid: this.isValid(),
-      ageSeconds: this.getAge(),
+      hasData: !!entry,
+      isValid: this.isValid(key),
+      ageSeconds: this.getAge(key),
       durationSeconds: this.duration / 1000,
     };
   }

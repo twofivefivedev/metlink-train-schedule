@@ -4,28 +4,22 @@
  */
 
 import axios, { AxiosInstance } from 'axios';
-import { METLINK_API_BASE, SERVICE_IDS } from '@/lib/constants';
+import { SERVICE_IDS, getStationPlatformVariants } from '@/lib/constants';
+import { getMetlinkApiBase, env } from '@/lib/config/env';
 import { retry } from './retry';
 import { logger } from './logger';
 import type { Departure, MetlinkApiResponse } from '@/types';
-
-const metlinkApiKey = process.env.METLINK_API_KEY;
-if (!metlinkApiKey) {
-  throw new Error('METLINK_API_KEY environment variable is required');
-}
-
-const apiTimeout = parseInt(process.env.API_TIMEOUT_MS || '10000', 10);
 
 /**
  * Create axios instance with default configuration
  */
 const metlinkClient: AxiosInstance = axios.create({
-  baseURL: METLINK_API_BASE,
+  baseURL: getMetlinkApiBase(),
   headers: {
-    'x-api-key': metlinkApiKey,
+    'x-api-key': env.METLINK_API_KEY,
     'Content-Type': 'application/json',
   },
-  timeout: apiTimeout,
+  timeout: env.API_TIMEOUT_MS,
 });
 
 /**
@@ -57,28 +51,54 @@ export async function getStopPredictions(stopId: string): Promise<MetlinkApiResp
 }
 
 /**
- * Get Wairarapa line departures for a specific station
+ * Get departures for a specific station and service line
+ * Handles normalized station IDs by trying platform variants if needed
  */
 export async function getWairarapaDepartures(
   stopId: string,
   serviceId: string = SERVICE_IDS.WAIRARAPA_LINE
 ): Promise<Departure[]> {
   try {
-    const data = await getStopPredictions(stopId);
-    const departures = data.departures || [];
+    // Get platform variants for the station ID
+    const platformVariants = getStationPlatformVariants(stopId);
+    let allDepartures: Departure[] = [];
 
-    const filtered = departures.filter(
+    // Try each platform variant and collect all departures
+    for (const platformId of platformVariants) {
+      try {
+        const data = await getStopPredictions(platformId);
+        const departures = data.departures || [];
+        allDepartures = allDepartures.concat(departures);
+      } catch (error) {
+        // If a platform variant fails, continue with others
+        logger.debug(`Failed to fetch predictions for platform ${platformId}, trying next variant`);
+      }
+    }
+
+    // Filter by service ID and remove duplicates (by service_id, destination, and departure time)
+    const filtered = allDepartures.filter(
       departure => departure.service_id === serviceId
     );
 
-    logger.debug(`Fetched ${filtered.length} WRL departures for ${stopId}`, {
-      total: departures.length,
+    // Remove duplicates based on service_id, destination, and departure time
+    const uniqueDepartures = filtered.filter((departure, index, self) =>
+      index === self.findIndex(d => 
+        d.service_id === departure.service_id &&
+        d.destination.stop_id === departure.destination.stop_id &&
+        d.departure?.aimed === departure.departure?.aimed
+      )
+    );
+
+    logger.debug(`Fetched ${uniqueDepartures.length} departures for ${stopId} (service: ${serviceId})`, {
+      total: allDepartures.length,
       filtered: filtered.length,
+      unique: uniqueDepartures.length,
+      platformsTried: platformVariants.length,
     });
 
-    return filtered;
+    return uniqueDepartures;
   } catch (error) {
-    logger.error(`Failed to fetch Wairarapa departures for ${stopId}`, error as Error);
+    logger.error(`Failed to fetch departures for ${stopId}`, error as Error);
     throw error;
   }
 }

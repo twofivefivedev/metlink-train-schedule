@@ -4,9 +4,10 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getWairarapaDepartures } from '@/lib/api/client';
-import { REFRESH_INTERVALS } from '@/lib/constants';
+import { getLineDepartures } from '@/lib/api/client';
+import { REFRESH_INTERVALS, DEFAULT_LINE } from '@/lib/constants';
 import type { Departure, ApiResponse, DeparturesResponse } from '@/types';
+import type { LineCode } from '@/lib/constants';
 
 interface UseTrainScheduleReturn {
   departures: {
@@ -24,7 +25,13 @@ interface UseTrainScheduleReturn {
   refresh: () => void;
 }
 
-export function useTrainSchedule(): UseTrainScheduleReturn {
+interface UseTrainScheduleOptions {
+  line?: LineCode;
+  stations?: string[];
+}
+
+export function useTrainSchedule(options: UseTrainScheduleOptions = {}): UseTrainScheduleReturn {
+  const { line = DEFAULT_LINE, stations } = options;
   const [departures, setDepartures] = useState<{ inbound: Departure[]; outbound: Departure[] }>({
     inbound: [],
     outbound: [],
@@ -48,7 +55,7 @@ export function useTrainSchedule(): UseTrainScheduleReturn {
       }
       setError(null);
 
-      const response: ApiResponse<DeparturesResponse> = await getWairarapaDepartures();
+      const response: ApiResponse<DeparturesResponse> = await getLineDepartures(line, stations);
       
       if (response.data) {
         setDepartures({
@@ -58,17 +65,31 @@ export function useTrainSchedule(): UseTrainScheduleReturn {
         setLastUpdated(new Date());
       }
     } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
       setError({
         message: 'Failed to fetch train schedule. Please try again.',
-        type: err instanceof Error ? err.name : 'FetchError',
+        type: error.name,
         retry: () => fetchSchedule(false),
       });
       console.error('Error fetching schedule:', err);
+      
+      // Report to Sentry in production
+      if (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_SENTRY_DSN) {
+        import('@sentry/nextjs').then((Sentry) => {
+          Sentry.captureException(error, {
+            tags: {
+              component: 'useTrainSchedule',
+            },
+          });
+        }).catch(() => {
+          // Silently fail if Sentry is not available
+        });
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [line, stations]);
 
   useEffect(() => {
     // Initial fetch
@@ -84,7 +105,7 @@ export function useTrainSchedule(): UseTrainScheduleReturn {
         clearInterval(intervalRef.current);
       }
     };
-  }, [fetchSchedule]);
+  }, [fetchSchedule, line, stations]);
 
   return {
     departures,
