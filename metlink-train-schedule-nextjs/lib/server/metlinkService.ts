@@ -81,16 +81,32 @@ class RequestMetrics {
 const requestMetrics = new RequestMetrics();
 
 /**
- * Create axios instance with default configuration
+ * Get or create axios instance with default configuration
+ * Lazy initialization ensures environment variables are read at runtime
  */
-const metlinkClient: AxiosInstance = axios.create({
-  baseURL: getMetlinkApiBase(),
-  headers: {
-    'x-api-key': env.METLINK_API_KEY,
-    'Content-Type': 'application/json',
-  },
-  timeout: env.API_TIMEOUT_MS,
-});
+let metlinkClientInstance: AxiosInstance | null = null;
+
+function getMetlinkClient(): AxiosInstance {
+  if (!metlinkClientInstance) {
+    // Access env at runtime (lazy via Proxy)
+    // Sanitize API key - remove any whitespace, newlines, or invalid characters
+    const apiKey = String(env.METLINK_API_KEY).trim().replace(/[\r\n\t]/g, '');
+    
+    if (!apiKey) {
+      throw new Error('METLINK_API_KEY is empty or invalid');
+    }
+    
+    metlinkClientInstance = axios.create({
+      baseURL: getMetlinkApiBase(),
+      headers: {
+        'x-api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      timeout: env.API_TIMEOUT_MS,
+    });
+  }
+  return metlinkClientInstance;
+}
 
 /**
  * Get stop predictions for a specific station
@@ -101,7 +117,7 @@ export async function getStopPredictions(stopId: string): Promise<MetlinkApiResp
     requestMetrics.increment();
     
     const response = await retry(
-      () => metlinkClient.get<MetlinkApiResponse>(`/stop-predictions?stop_id=${stopId}`),
+      () => getMetlinkClient().get<MetlinkApiResponse>(`/stop-predictions?stop_id=${stopId}`),
       {
         shouldRetry: (error: unknown) => {
           // Retry on network errors or 5xx, but not on 4xx (client errors)
@@ -119,11 +135,26 @@ export async function getStopPredictions(stopId: string): Promise<MetlinkApiResp
     logger.debug(`Fetched stop predictions for ${stopId}`, {
       requestCount: requestMetrics.getCount(),
       requestsThisHour: requestMetrics.getCurrentHourCount(),
+      departuresCount: response.data.departures?.length || 0,
+      sampleDeparture: response.data.departures?.[0] ? {
+        service_id: response.data.departures[0].service_id,
+        trip_id: (response.data.departures[0] as unknown as { trip_id?: string }).trip_id,
+        destination: response.data.departures[0].destination?.name,
+        aimed: response.data.departures[0].departure?.aimed,
+        expected: response.data.departures[0].departure?.expected,
+        status: (response.data.departures[0] as unknown as { status?: string }).status,
+      } : null,
     });
 
     return response.data;
   } catch (error) {
-    logger.error(`Failed to fetch stop predictions for ${stopId}`, error as Error);
+    const errorObj = error as Error;
+    logger.error(`Failed to fetch stop predictions for ${stopId}`, {
+      error: errorObj.message,
+      name: errorObj.name,
+      stack: errorObj.stack,
+      stopId,
+    });
     throw error;
   }
 }
@@ -179,6 +210,13 @@ export async function getWairarapaDepartures(
       filtered: filtered.length,
       unique: uniqueDepartures.length,
       platformsTried: platformVariants.length,
+      sampleDepartures: uniqueDepartures.slice(0, 3).map(dep => ({
+        trip_id: (dep as unknown as { trip_id?: string }).trip_id,
+        destination: dep.destination?.name,
+        aimed: dep.departure?.aimed,
+        expected: dep.departure?.expected,
+        status: (dep as unknown as { status?: string }).status,
+      })),
     });
 
     return uniqueDepartures;
@@ -203,8 +241,17 @@ export async function getMultipleStationDepartures(
         station: stopId,
       }));
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorDetails = error instanceof Error ? {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      } : { error: String(error) };
+      
       logger.warn(`Failed to fetch departures for station ${stopId}`, {
-        error: error instanceof Error ? error.message : String(error),
+        ...errorDetails,
+        station: stopId,
+        serviceId,
       });
       return []; // Return empty array on error for this station
     }

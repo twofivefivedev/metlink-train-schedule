@@ -20,15 +20,17 @@ interface DepartureRowProps {
 
 export function DepartureRow({ departure, isMobile = false }: DepartureRowProps) {
   const category = getStatusCategory(departure);
-  // For delayed trains, show expected time instead of scheduled time
-  const departureTime = category === 'delayed' && departure.departure?.expected
-    ? departure.departure.expected
-    : (departure.departure?.expected || departure.departure?.aimed);
   const status = getDepartureStatus(departure);
   const route = getRouteText(departure);
   const isBus = isBusReplacement(departure);
   const notices = getImportantNotices(departure);
   const statusColorClass = getStatusColorClass(category);
+  
+  // For delayed trains, show both scheduled (crossed out) and expected (new ETA) times
+  const aimedTime = departure.departure?.aimed;
+  const expectedTime = departure.departure?.expected;
+  const isDelayed = category === 'delayed' && aimedTime && expectedTime;
+  const departureTime = expectedTime || aimedTime;
 
   if (isMobile) {
     return (
@@ -45,7 +47,18 @@ export function DepartureRow({ departure, isMobile = false }: DepartureRowProps)
                 ? statusColorClass 
                 : 'text-foreground'
             }`}>
-              {formatTime(departureTime)}
+              {isDelayed ? (
+                <span className="flex items-center gap-2 justify-end">
+                  <time dateTime={aimedTime} className="line-through opacity-60">
+                    {formatTime(aimedTime)}
+                  </time>
+                  <time dateTime={expectedTime} className={statusColorClass}>
+                    {formatTime(expectedTime)}
+                  </time>
+                </span>
+              ) : (
+                formatTime(departureTime)
+              )}
             </div>
             {departure.departure?.expected && (
               <div className="text-xs text-primary font-medium">Live</div>
@@ -86,7 +99,18 @@ export function DepartureRow({ departure, isMobile = false }: DepartureRowProps)
           : 'text-foreground'
       }`}>
         <div>
-        {formatTime(departureTime)}
+        {isDelayed ? (
+          <span className="flex items-center gap-2">
+            <time dateTime={aimedTime} className="line-through opacity-60">
+              {formatTime(aimedTime)}
+            </time>
+            <time dateTime={expectedTime} className={statusColorClass}>
+              {formatTime(expectedTime)}
+            </time>
+          </span>
+        ) : (
+          formatTime(departureTime)
+        )}
         {departure.departure?.expected && (
           <span className="text-xs text-primary ml-2 font-medium">(Live)</span>
         )}

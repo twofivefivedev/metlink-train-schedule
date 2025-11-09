@@ -36,11 +36,22 @@ async function fetchWithRetry<T>(
         },
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      let data: ApiResponse<T>;
+      try {
+        data = await response.json() as ApiResponse<T>;
+      } catch (jsonError) {
+        // If JSON parsing fails, throw with status
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status} - Invalid JSON response`);
+        }
+        throw jsonError;
       }
 
-      const data = await response.json() as ApiResponse<T>;
+      if (!response.ok) {
+        // Try to extract error message from response
+        const errorMessage = data.error?.message || `HTTP error! status: ${response.status}`;
+        throw new Error(errorMessage);
+      }
 
       if (!data.success) {
         throw new Error(data.error?.message || 'API returned error');

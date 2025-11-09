@@ -40,6 +40,26 @@ export function formatTime(timeString: string | undefined | null): string {
 }
 
 /**
+ * Calculate delay in minutes by comparing expected vs aimed times
+ * Returns positive number if delayed, negative if early, 0 if on time
+ */
+function calculateDelayMinutes(departure: Departure): number | null {
+  const aimed = departure.departure?.aimed;
+  const expected = departure.departure?.expected;
+  
+  if (!aimed || !expected) {
+    return null;
+  }
+  
+  const aimedTime = new Date(aimed).getTime();
+  const expectedTime = new Date(expected).getTime();
+  const diffMs = expectedTime - aimedTime;
+  const diffMinutes = Math.round(diffMs / (1000 * 60));
+  
+  return diffMinutes;
+}
+
+/**
  * Get display status for a departure
  */
 export function getDepartureStatus(departure: Departure): {
@@ -49,19 +69,26 @@ export function getDepartureStatus(departure: Departure): {
 } {
   const delay = parseDelay((departure as unknown as { delay?: string }).delay);
   const hasRealTime = (departure as unknown as { monitored?: boolean }).monitored && departure.departure?.expected;
-
   const status = (departure as unknown as { status?: string }).status;
+  
   if (status === 'canceled' || status === 'cancelled') {
     return { text: 'Canceled', color: 'destructive', isRealTime: true };
   }
 
+  // Calculate delay from expected vs aimed times if both are available
+  const calculatedDelayMinutes = calculateDelayMinutes(departure);
+  
   // Check for delays - 5+ minutes is considered delayed
+  // Priority: 1) status field, 2) delay field from API, 3) calculated delay from times
   if (status === 'delayed') {
-    const delayText = delay || '';
+    const delayText = delay || (calculatedDelayMinutes !== null && calculatedDelayMinutes >= 5 
+      ? `${calculatedDelayMinutes}m` 
+      : '');
     return { text: delayText ? `Delayed ${delayText}` : 'Delayed', color: 'warning', isRealTime: true };
   }
+  
+  // Check API delay field
   if (delay) {
-    // Extract minutes to determine if it's a delay (5+ minutes)
     const minutesMatch = delay.match(/(\d+)m/);
     if (minutesMatch) {
       const minutes = parseInt(minutesMatch[1]);
@@ -74,11 +101,34 @@ export function getDepartureStatus(departure: Departure): {
       return { text: `Delayed ${delay}`, color: 'warning', isRealTime: true };
     }
   }
-
-  if (hasRealTime) {
-    return { text: 'On Time', color: 'success', isRealTime: true };
+  
+  // Check calculated delay from expected vs aimed times
+  if (calculatedDelayMinutes !== null && calculatedDelayMinutes >= 5) {
+    const delayText = calculatedDelayMinutes >= 60 
+      ? `${Math.floor(calculatedDelayMinutes / 60)}h ${calculatedDelayMinutes % 60}m`
+      : `${calculatedDelayMinutes}m`;
+    return { text: `Delayed ${delayText}`, color: 'warning', isRealTime: true };
   }
 
+  // If we have real-time data and no significant delay, show "On Time"
+  // "On Time" means: real-time data available AND within ±2 minutes of scheduled time
+  if (hasRealTime) {
+    if (calculatedDelayMinutes !== null) {
+      // If within ±2 minutes, consider it "On Time"
+      if (Math.abs(calculatedDelayMinutes) <= 2) {
+        return { text: 'On Time', color: 'success', isRealTime: true };
+      }
+      // If early by more than 2 minutes, still show "On Time" (early is good!)
+      if (calculatedDelayMinutes < -2) {
+        return { text: 'On Time', color: 'success', isRealTime: true };
+      }
+    } else {
+      // No calculated delay but has real-time data - assume on time
+      return { text: 'On Time', color: 'success', isRealTime: true };
+    }
+  }
+
+  // "Scheduled" means: no real-time data available, showing scheduled time only
   return { text: 'Scheduled', color: 'secondary', isRealTime: false };
 }
 
@@ -140,23 +190,37 @@ export function getImportantNotices(departure: Departure): string | null {
     notices.push('Bus replacement');
   }
 
+  // Check for delays - use API delay field first, then calculated delay
   const delay = parseDelay((departure as unknown as { delay?: string }).delay);
+  const calculatedDelayMinutes = calculateDelayMinutes(departure);
+  
+  let delayMinutes: number | null = null;
+  
+  // Extract minutes from API delay field if available
   if (delay) {
-    // Check for hours (any delay with hours is major)
-    if (delay.includes('h')) {
-      notices.push('Major delay');
-    } else if (delay.includes('m')) {
-      // Extract minutes from string like "30m" or "1h 30m"
-      const minutesMatch = delay.match(/(\d+)m/);
-      if (minutesMatch) {
-        const minutes = parseInt(minutesMatch[1]);
-        // 30+ minutes is major delay, 5-29 minutes is just delayed
-        if (minutes >= 30) {
-          notices.push('Major delay');
-        } else if (minutes >= 5) {
-          notices.push('Delayed');
-        }
+    const minutesMatch = delay.match(/(\d+)m/);
+    if (minutesMatch) {
+      delayMinutes = parseInt(minutesMatch[1]);
+    } else if (delay.includes('h')) {
+      // If hours are present, treat as major delay
+      const hoursMatch = delay.match(/(\d+)h/);
+      if (hoursMatch) {
+        delayMinutes = parseInt(hoursMatch[1]) * 60;
       }
+    }
+  }
+  
+  // Use calculated delay if API delay not available
+  if (delayMinutes === null && calculatedDelayMinutes !== null && calculatedDelayMinutes >= 5) {
+    delayMinutes = calculatedDelayMinutes;
+  }
+  
+  if (delayMinutes !== null && delayMinutes >= 5) {
+    // 30+ minutes is major delay, 5-29 minutes is just delayed
+    if (delayMinutes >= 30) {
+      notices.push('Major delay');
+    } else {
+      notices.push('Delayed');
     }
   }
 
@@ -190,13 +254,14 @@ export function getStatusCategory(departure: Departure): StatusCategory {
     return 'bus';
   }
   
-  const delay = parseDelay((departure as unknown as { delay?: string }).delay);
   // Check if delayed: status is 'delayed' OR there's a delay of 5+ minutes
   if (status === 'delayed') {
     return 'delayed';
   }
+  
+  // Check API delay field
+  const delay = parseDelay((departure as unknown as { delay?: string }).delay);
   if (delay) {
-    // Extract minutes from delay string (e.g., "5m", "30m", "1h 30m")
     const minutesMatch = delay.match(/(\d+)m/);
     if (minutesMatch) {
       const minutes = parseInt(minutesMatch[1]);
@@ -208,6 +273,12 @@ export function getStatusCategory(departure: Departure): StatusCategory {
     if (delay.includes('h')) {
       return 'delayed';
     }
+  }
+  
+  // Check calculated delay from expected vs aimed times
+  const calculatedDelayMinutes = calculateDelayMinutes(departure);
+  if (calculatedDelayMinutes !== null && calculatedDelayMinutes >= 5) {
+    return 'delayed';
   }
   
   return 'normal';

@@ -57,6 +57,8 @@ export default function Home() {
         [selectedLine]: getDefaultStationsForLine(selectedLine),
       }));
     }
+    // Reset direction to inbound (to Wellington) when line changes
+    setDirection('inbound');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLine]); // Only depend on selectedLine to avoid loops
 
@@ -64,6 +66,8 @@ export default function Home() {
     setSelectedLine(line);
     // Reset station filter when changing lines
     setSelectedStation(null);
+    // Reset direction to inbound (to Wellington)
+    setDirection('inbound');
   };
 
   const handleStationsChange = (stations: string[]) => {
@@ -208,6 +212,7 @@ export default function Home() {
             onDirectionToggle={toggleDirection}
             lastUpdated={lastUpdated}
             refreshing={refreshing}
+            loading={loading}
             onRefresh={refresh}
             selectedLine={selectedLine}
           />

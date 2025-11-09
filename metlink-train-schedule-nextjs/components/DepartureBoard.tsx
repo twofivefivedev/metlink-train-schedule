@@ -27,6 +27,7 @@ interface DepartureBoardProps {
   onDirectionToggle: () => void;
   lastUpdated: Date | null;
   refreshing: boolean;
+  loading?: boolean;
   onRefresh: () => void;
   selectedLine?: LineCode;
 }
@@ -37,11 +38,49 @@ export function DepartureBoard({
   onDirectionToggle,
   lastUpdated,
   refreshing,
+  loading = false,
   onRefresh,
   selectedLine = 'WRL',
 }: DepartureBoardProps) {
   const displayedDepartures = departures.slice(0, 10);
   const currentTime = useCurrentTime();
+  
+  // Group delayed trains by trip_id to identify which stations belong to the same train
+  // Only show expected time on the first station of each delayed train
+  const delayedTrainFirstStations = useMemo(() => {
+    const delayedTrains = new Map<string, Departure>();
+    
+    displayedDepartures.forEach(dep => {
+      const category = getStatusCategory(dep);
+      if (category === 'delayed') {
+        const tripId = (dep as unknown as { trip_id?: string }).trip_id;
+        if (tripId) {
+          const existing = delayedTrains.get(tripId);
+          if (!existing) {
+            delayedTrains.set(tripId, dep);
+          } else {
+            // Keep the one with the earliest time (using aimed time for comparison)
+            const existingTime = new Date(existing.departure?.aimed || 0).getTime();
+            const currentTime = new Date(dep.departure?.aimed || 0).getTime();
+            if (currentTime < existingTime) {
+              delayedTrains.set(tripId, dep);
+            }
+          }
+        }
+      }
+    });
+    
+    // Create a Set of departure IDs that are the first station of a delayed train
+    // Use a combination that uniquely identifies the departure
+    const firstStationIds = new Set<string>();
+    delayedTrains.forEach(dep => {
+      // Create unique ID using trip_id + station + aimed time
+      const id = `${(dep as unknown as { trip_id?: string }).trip_id || 'no-trip'}-${dep.station}-${dep.departure?.aimed}`;
+      firstStationIds.add(id);
+    });
+    
+    return firstStationIds;
+  }, [displayedDepartures]);
   
   // Track selected notice for service notice panel
   const [selectedNotice, setSelectedNotice] = useState<{
@@ -50,14 +89,29 @@ export function DepartureBoard({
     departure: Departure;
   } | null>(null);
 
-  // Calculate wait time for the next available (non-cancelled) departure
+  // Calculate wait time for the next available (non-cancelled, future) departure
   const nextDepartureWaitTime = useMemo(() => {
     if (displayedDepartures.length === 0) return null;
     
-    // Find the first non-cancelled departure
+    // Find the first non-cancelled departure that hasn't departed yet
     const nextAvailableDeparture = displayedDepartures.find(dep => {
       const status = (dep as unknown as { status?: string }).status;
-      return status !== 'canceled' && status !== 'cancelled';
+      if (status === 'canceled' || status === 'cancelled') {
+        return false;
+      }
+      
+      // Check if departure is in the future
+      const departureTime = dep.departure?.expected || dep.departure?.aimed;
+      if (!departureTime) {
+        return false;
+      }
+      
+      const departureDate = new Date(departureTime);
+      const diffMs = departureDate.getTime() - currentTime.getTime();
+      const diffMinutes = Math.floor(diffMs / (1000 * 60));
+      
+      // Only include departures that are in the future (or now)
+      return diffMinutes >= 0;
     });
     
     if (!nextAvailableDeparture) return null;
@@ -405,7 +459,32 @@ export function DepartureBoard({
 
       {/* Departure Board Table */}
       <section aria-labelledby="departures-heading" className="max-w-7xl mx-auto px-8 py-8">
-        {displayedDepartures.length === 0 ? (
+        {loading ? (
+          <div className="bg-white dark:bg-black border-2 border-black dark:border-white">
+            <h2 id="departures-heading" className="sr-only">
+              Train Departures Table
+            </h2>
+            {/* Table Header */}
+            <div
+              className="grid grid-cols-3 gap-8 border-b-2 border-black dark:border-white px-8 py-5 bg-white dark:bg-black"
+              role="rowgroup"
+            >
+              <div className="text-sm font-bold uppercase tracking-widest text-black dark:text-white" role="columnheader">
+                TIME
+              </div>
+              <div className="text-sm font-bold uppercase tracking-widest text-black dark:text-white" role="columnheader">
+                STATION
+              </div>
+              <div className="text-sm font-bold uppercase tracking-widest text-black dark:text-white" role="columnheader">
+                STATUS
+              </div>
+            </div>
+            {/* Loading State */}
+            <div className="text-center py-16 text-black/70 dark:text-white/70" role="status" aria-live="polite">
+              <p className="text-xl font-semibold">Loading schedule...</p>
+            </div>
+          </div>
+        ) : displayedDepartures.length === 0 ? (
           <div className="text-center py-16 text-black/70 dark:text-white/70" role="status" aria-live="polite">
             <p className="text-xl font-semibold">No trains scheduled at this time</p>
           </div>
@@ -439,6 +518,12 @@ export function DepartureBoard({
                   ((selectedNotice.departure as unknown as { trip_id?: string }).trip_id || 
                    `${selectedNotice.departure.service_id}-${selectedNotice.departure.station}-${selectedNotice.departure.departure?.aimed}`) : null;
                 
+                // Check if this is the first station of a delayed train
+                // Use the same ID format as in delayedTrainFirstStations
+                const tripId = (departure as unknown as { trip_id?: string }).trip_id || 'no-trip';
+                const stationId = `${tripId}-${departure.station}-${departure.departure?.aimed}`;
+                const isFirstDelayedStation = delayedTrainFirstStations.has(stationId);
+                
                 return (
                   <DepartureBoardRow
                     key={`${(departure as unknown as { trip_id?: string }).trip_id || index}-${index}`}
@@ -446,6 +531,7 @@ export function DepartureBoard({
                     index={index}
                     onSelect={handleNoticeSelect}
                     isSelected={departureId === selectedId}
+                    showExpectedTime={isFirstDelayedStation}
                   />
                 );
               })}
@@ -462,9 +548,10 @@ interface DepartureBoardRowProps {
   index: number;
   onSelect: (departure: Departure) => void;
   isSelected: boolean;
+  showExpectedTime?: boolean; // Only show expected time if this is the first station of a delayed train
 }
 
-function DepartureBoardRow({ departure, index, onSelect, isSelected }: DepartureBoardRowProps) {
+function DepartureBoardRow({ departure, index, onSelect, isSelected, showExpectedTime = true }: DepartureBoardRowProps) {
   const departureTime = departure.departure?.expected || departure.departure?.aimed;
   const status = getDepartureStatus(departure);
   const route = getRouteText(departure);
@@ -518,10 +605,15 @@ function DepartureBoardRow({ departure, index, onSelect, isSelected }: Departure
     }
   };
 
-  // For delayed trains, show expected time instead of scheduled time
-  const displayTime = category === 'delayed' && departure.departure?.expected
-    ? departure.departure.expected
-    : departureTime;
+  // For delayed trains:
+  // - First station: show scheduled (crossed out) + expected (new ETA)
+  // - Other stations: show only scheduled (crossed out), no expected time
+  // Otherwise, show expected time if available, or scheduled time
+  const aimedTime = departure.departure?.aimed;
+  const expectedTime = departure.departure?.expected;
+  const isDelayed = category === 'delayed' && aimedTime && expectedTime;
+  const shouldShowExpectedTime = isDelayed ? showExpectedTime : true; // Always show expected for non-delayed
+  const displayTime = (shouldShowExpectedTime && expectedTime) || aimedTime;
 
   return (
     <div
@@ -546,7 +638,20 @@ function DepartureBoardRow({ departure, index, onSelect, isSelected }: Departure
           : 'text-black dark:text-white'
       }`} role="gridcell">
         {displayTime ? (
-          <time dateTime={displayTime}>{formatTime24h(displayTime)}</time>
+          isDelayed ? (
+            <span className="flex items-center gap-2">
+              <time dateTime={aimedTime} className="line-through opacity-60">
+                {formatTime24h(aimedTime)}
+              </time>
+              {shouldShowExpectedTime && expectedTime && (
+                <time dateTime={expectedTime} className={statusColorClass}>
+                  {formatTime24h(expectedTime)}
+                </time>
+              )}
+            </span>
+          ) : (
+            <time dateTime={displayTime}>{formatTime24h(displayTime)}</time>
+          )
         ) : (
           '--:--'
         )}

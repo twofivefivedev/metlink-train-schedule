@@ -14,6 +14,26 @@ import { logger } from '@/lib/server/logger';
 export async function GET(request: NextRequest) {
   let cacheKey = '';
   try {
+    // Verify environment variable is available
+    const apiKey = process.env.METLINK_API_KEY;
+    if (!apiKey) {
+      logger.error('METLINK_API_KEY is not set in environment variables');
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            message: 'Server configuration error: API key not found',
+            code: 'CONFIG_ERROR',
+          },
+        },
+        { status: 500 }
+      );
+    }
+    logger.debug('Environment check passed', {
+      hasApiKey: !!apiKey,
+      apiKeyLength: apiKey.length,
+    });
+
     // Get station list and line from query params or use defaults
     const searchParams = request.nextUrl.searchParams;
     const stationsParam = searchParams.get('stations');
@@ -60,10 +80,21 @@ export async function GET(request: NextRequest) {
     });
 
     // Fetch data from specified stations for the specified line
+    logger.info('Fetching departures from Metlink API', {
+      stations: stationCodes,
+      line: serviceId,
+      stationCount: stationCodes.length,
+    });
+    
     const stationResults = await getMultipleStationDepartures(
       stationCodes,
       serviceId
     );
+
+    logger.info('Received station results', {
+      resultCount: stationResults.length,
+      resultsWithData: stationResults.filter(r => r.length > 0).length,
+    });
 
     // Process and organize departures
     const { inbound, outbound, total } = processDepartures(stationResults);
@@ -90,7 +121,12 @@ export async function GET(request: NextRequest) {
     }));
   } catch (err) {
     const error = err as Error;
-    logger.error('Error fetching departures', error);
+    logger.error('Error fetching departures', {
+      error: error.message,
+      stack: error.stack,
+      name: error.name,
+      stations: cacheKey,
+    });
     
     // Report to Sentry in production
     if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
@@ -116,7 +152,7 @@ export async function GET(request: NextRequest) {
       {
         success: false,
         error: {
-          message: 'Failed to fetch departures',
+          message: error.message || 'Failed to fetch departures',
           code: 'FETCH_ERROR',
         },
       },

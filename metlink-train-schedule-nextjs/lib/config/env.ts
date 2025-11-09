@@ -81,7 +81,24 @@ function getEnv() {
   }
 }
 
-export const env = getEnv();
+// Lazy initialization to ensure environment variables are read at runtime
+// This is important for Vercel/serverless environments where env vars
+// might not be available at module load time
+let cachedEnv: ReturnType<typeof getEnv> | null = null;
+
+export function getEnvValue() {
+  if (!cachedEnv) {
+    cachedEnv = getEnv();
+  }
+  return cachedEnv;
+}
+
+// For backward compatibility, export env as a getter
+export const env = new Proxy({} as ReturnType<typeof getEnv>, {
+  get(_target, prop) {
+    return getEnvValue()[prop as keyof ReturnType<typeof getEnv>];
+  }
+});
 
 /**
  * Get API base URL for client-side requests
