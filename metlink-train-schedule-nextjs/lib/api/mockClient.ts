@@ -18,7 +18,7 @@ function getMockScenario(): MockScenario {
   const params = new URLSearchParams(window.location.search);
   const scenario = params.get('mockScenario') as MockScenario;
   
-  if (scenario && ['cancelled', 'delayed', 'approaching', 'multiple', 'normal', 'bus-replacement'].includes(scenario)) {
+  if (scenario && ['cancelled', 'delayed', 'approaching', 'normal', 'bus-replacement'].includes(scenario)) {
     return scenario;
   }
   
@@ -43,11 +43,26 @@ export async function getLineDeparturesMock(
   await delay(200);
   
   const scenario = getMockScenario();
+  
+  // Debug: log scenario being used
+  if (typeof console !== 'undefined') {
+    console.log('[Mock Client] Using scenario:', scenario);
+  }
+  
   const mockData = generateMockDeparturesResponse({
     line: line as LineCode,
     stations,
     scenario,
   });
+
+  // Debug: log delayed trains in the response
+  if (typeof console !== 'undefined' && scenario === 'delayed') {
+    const delayedTrains = [...mockData.inbound, ...mockData.outbound].filter(dep => {
+      const status = (dep as unknown as { status?: string }).status;
+      return status === 'delayed';
+    });
+    console.log('[Mock Client] Delayed trains found:', delayedTrains.length, delayedTrains.slice(0, 2));
+  }
 
   return {
     success: true,

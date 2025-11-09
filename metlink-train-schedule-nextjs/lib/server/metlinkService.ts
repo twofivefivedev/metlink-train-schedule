@@ -152,7 +152,7 @@ export async function getWairarapaDepartures(
     for (const platformId of platformVariants) {
       try {
         const data = await getStopPredictions(platformId);
-        const departures = data.departures || [];
+    const departures = data.departures || [];
         allDepartures = allDepartures.concat(departures);
       } catch (error) {
         // If a platform variant fails, continue with others

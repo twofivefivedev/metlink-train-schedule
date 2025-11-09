@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     }
 
     const metricsBefore = getRequestMetrics();
-    
+
     logger.info('Cache expired or empty, fetching fresh data', {
       stations: cacheKey,
       line: serviceId,

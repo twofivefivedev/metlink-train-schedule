@@ -11,7 +11,6 @@ export type MockScenario =
   | 'cancelled' 
   | 'delayed' 
   | 'approaching' 
-  | 'multiple' 
   | 'normal' 
   | 'bus-replacement';
 
@@ -109,49 +108,101 @@ function generateMockDepartures(
   // Use line code directly as service_id (WRL, KPL, HVL, JVL)
   const serviceId = line;
   
-  // Generate departures for each station
-  stations.forEach((station) => {
-    // Generate inbound departures
-    const inboundTimes = [5, 15, 25, 35, 45, 55]; // Minutes from now
+  // Track if we've already created a cancelled/bus/approaching train for this scenario
+  let cancelledCreated = false;
+  let approachingCreated = false;
+  let busCreated = false;
+  let delayedCount = 0; // Track how many delayed trains we've created (max 3)
+
+  // Generate departures - only for first few stations to avoid duplicates
+  // Limit to first 3 stations to keep times varied and realistic
+  const stationsToUse = stations.slice(0, 3);
+  
+  stationsToUse.forEach((station, stationIndex) => {
+    // Generate inbound departures with varied times per station
+    // Each station gets different base times to avoid duplicates
+    const baseMinutes = stationIndex * 2; // Offset times per station
+    const inboundTimes = [
+      5 + baseMinutes, 
+      15 + baseMinutes, 
+      25 + baseMinutes, 
+      35 + baseMinutes, 
+      45 + baseMinutes, 
+      55 + baseMinutes
+    ];
+    
     inboundTimes.forEach((minutes, index) => {
       let options: MockDepartureOptions = {};
       let finalMinutes = minutes;
       
       // Apply scenario-specific options
-      if (scenario === 'cancelled' && index === 0) {
+      if (scenario === 'cancelled' && index === 0 && stationIndex === 0 && !cancelledCreated) {
+        // First departure is cancelled, others are normal/on-time
         options = { cancelled: true };
-      } else if (scenario === 'delayed' && index === 0) {
-        options = { delayed: true, delayMinutes: 20 };
-      } else if (scenario === 'approaching' && index === 0) {
+        cancelledCreated = true;
+      } else if (scenario === 'delayed' && stationIndex === 0 && delayedCount < 3) {
+        // Create delays for top 3 schedules: 5min, 10min, 30min delays
+        if (index === 0) {
+          options = { delayed: true, delayMinutes: 5 }; // 5 minute delay
+          delayedCount++;
+        } else if (index === 1) {
+          options = { delayed: true, delayMinutes: 10 }; // 10 minute delay
+          delayedCount++;
+        } else if (index === 2) {
+          options = { delayed: true, delayMinutes: 30 }; // 30 minute delay (major)
+          delayedCount++;
+        }
+      } else if (scenario === 'approaching' && index === 0 && stationIndex === 0 && !approachingCreated) {
         options = { approaching: true };
         finalMinutes = 3; // Override to make it approaching
-      } else if (scenario === 'bus-replacement' && index === 0) {
+        approachingCreated = true;
+      } else if (scenario === 'bus-replacement' && index === 0 && stationIndex === 0 && !busCreated) {
         options = { busReplacement: true };
-      } else if (scenario === 'multiple' && index === 0) {
-        options = { delayed: true, delayMinutes: 30 };
-      } else if (scenario === 'multiple' && index === 1) {
-        options = { cancelled: true };
+        busCreated = true;
       }
       
       departures.push(createMockDeparture(station, serviceId, 'inbound', finalMinutes, options));
     });
 
-    // Generate outbound departures
-    const outboundTimes = [10, 20, 30, 40, 50, 60];
+    // Generate outbound departures with varied times per station
+    const outboundBaseMinutes = stationIndex * 3; // Different offset for outbound
+    const outboundTimes = [
+      10 + outboundBaseMinutes, 
+      20 + outboundBaseMinutes, 
+      30 + outboundBaseMinutes, 
+      40 + outboundBaseMinutes, 
+      50 + outboundBaseMinutes, 
+      60 + outboundBaseMinutes
+    ];
+    
     outboundTimes.forEach((minutes, index) => {
       let options: MockDepartureOptions = {};
       let finalMinutes = minutes;
       
       // Apply scenario-specific options for outbound
-      if (scenario === 'cancelled' && index === 1) {
+      if (scenario === 'cancelled' && index === 1 && stationIndex === 0 && !cancelledCreated) {
+        // Second outbound departure is cancelled, others are normal/on-time
         options = { cancelled: true };
-      } else if (scenario === 'delayed' && index === 1) {
-        options = { delayed: true, delayMinutes: 25 };
-      } else if (scenario === 'approaching' && index === 0) {
+        cancelledCreated = true;
+      } else if (scenario === 'delayed' && stationIndex === 0 && delayedCount < 3) {
+        // Create delays for top 3 schedules: 5min, 10min, 30min delays
+        if (index === 0) {
+          options = { delayed: true, delayMinutes: 5 }; // 5 minute delay
+          delayedCount++;
+        } else if (index === 1) {
+          options = { delayed: true, delayMinutes: 10 }; // 10 minute delay
+          delayedCount++;
+        } else if (index === 2) {
+          options = { delayed: true, delayMinutes: 30 }; // 30 minute delay (major)
+          delayedCount++;
+        }
+      } else if (scenario === 'approaching' && index === 0 && stationIndex === 0 && !approachingCreated) {
         options = { approaching: true };
         finalMinutes = 2; // Override to make it approaching
-      } else if (scenario === 'bus-replacement' && index === 1) {
+        approachingCreated = true;
+      } else if (scenario === 'bus-replacement' && index === 1 && stationIndex === 0 && !busCreated) {
         options = { busReplacement: true };
+        busCreated = true;
       }
       
       departures.push(createMockDeparture(station, serviceId, 'outbound', finalMinutes, options));
@@ -176,13 +227,20 @@ export function generateMockDeparturesResponse(
 
   const allDepartures = generateMockDepartures(line, stations, scenario, baseTime);
   
+  // Sort by departure time (aimed time) to ensure proper ordering
+  const sortedDepartures = [...allDepartures].sort((a, b) => {
+    const timeA = new Date(a.departure?.aimed || 0).getTime();
+    const timeB = new Date(b.departure?.aimed || 0).getTime();
+    return timeA - timeB;
+  });
+  
   // Separate into inbound and outbound
-  const inbound = allDepartures.filter(dep => {
+  const inbound = sortedDepartures.filter(dep => {
     const destination = dep.destination?.stop_id || '';
     return destination === 'WELL';
   });
 
-  const outbound = allDepartures.filter(dep => {
+  const outbound = sortedDepartures.filter(dep => {
     const destination = dep.destination?.stop_id || '';
     return destination !== 'WELL';
   });
@@ -190,7 +248,7 @@ export function generateMockDeparturesResponse(
   return {
     inbound,
     outbound,
-    total: allDepartures.length,
+    total: sortedDepartures.length,
   };
 }
 

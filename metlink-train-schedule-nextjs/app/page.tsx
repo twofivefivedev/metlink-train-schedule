@@ -185,18 +185,18 @@ export default function Home() {
                       selectedLine={selectedLine}
                     />
                     <FiltersButton
-                      stations={availableStations}
-                      selectedStation={selectedStation}
-                      onStationChange={setSelectedStation}
-                      routeFilter={routeFilter}
-                      onRouteFilterChange={setRouteFilter}
-                      sortOption={sortOption}
-                      onSortChange={setSortOption}
-                      sortDirection={sortDirection}
-                      onSortDirectionChange={setSortDirection}
-                      onClearFilters={clearFilters}
-                      hasActiveFilters={hasActiveFilters}
-                    />
+            stations={availableStations}
+            selectedStation={selectedStation}
+            onStationChange={setSelectedStation}
+            routeFilter={routeFilter}
+            onRouteFilterChange={setRouteFilter}
+            sortOption={sortOption}
+            onSortChange={setSortOption}
+            sortDirection={sortDirection}
+            onSortDirectionChange={setSortDirection}
+            onClearFilters={clearFilters}
+            hasActiveFilters={hasActiveFilters}
+          />
                   </div>
                 </div>
               </div>

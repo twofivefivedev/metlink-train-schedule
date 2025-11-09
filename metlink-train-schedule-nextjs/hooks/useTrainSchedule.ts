@@ -119,12 +119,12 @@ export function useTrainSchedule(options: UseTrainScheduleOptions = {}): UseTrai
       }
       
       // Start polling - will only execute when tab is visible
-      intervalRef.current = setInterval(() => {
+    intervalRef.current = setInterval(() => {
         // Only poll if tab is visible
         if (isVisible) {
-          fetchSchedule(true);
+      fetchSchedule(true);
         }
-      }, REFRESH_INTERVALS.DEFAULT);
+    }, REFRESH_INTERVALS.DEFAULT);
     }
 
     return () => {

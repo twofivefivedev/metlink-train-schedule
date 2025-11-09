@@ -111,15 +111,17 @@ export function shouldUseMockData(): boolean {
     return true;
   }
   
-  // Check if explicitly disabled
+  // Check if explicitly disabled - this takes precedence over auto-enable
   if (process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'false') {
     return false;
   }
   
-  // Auto-enable in development mode (both client and server)
+  // Auto-enable in development mode (server-side only)
   // Note: NODE_ENV is available on both client and server in Next.js
+  // Only auto-enable if not explicitly set to false
   if (typeof window === 'undefined') {
     // Server-side: check NODE_ENV
+    // Only auto-enable if the flag is not explicitly set
     return process.env.NODE_ENV === 'development';
   } else {
     // Client-side: NODE_ENV is also available via Next.js

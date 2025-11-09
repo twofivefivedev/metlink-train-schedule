@@ -55,8 +55,24 @@ export function getDepartureStatus(departure: Departure): {
     return { text: 'Canceled', color: 'destructive', isRealTime: true };
   }
 
-  if (status === 'delayed' || delay) {
-    return { text: `Delayed ${delay || ''}`, color: 'warning', isRealTime: true };
+  // Check for delays - 5+ minutes is considered delayed
+  if (status === 'delayed') {
+    const delayText = delay || '';
+    return { text: delayText ? `Delayed ${delayText}` : 'Delayed', color: 'warning', isRealTime: true };
+  }
+  if (delay) {
+    // Extract minutes to determine if it's a delay (5+ minutes)
+    const minutesMatch = delay.match(/(\d+)m/);
+    if (minutesMatch) {
+      const minutes = parseInt(minutesMatch[1]);
+      if (minutes >= 5) {
+        return { text: `Delayed ${delay}`, color: 'warning', isRealTime: true };
+      }
+    }
+    // Check for hours (any delay with hours is considered delayed)
+    if (delay.includes('h')) {
+      return { text: `Delayed ${delay}`, color: 'warning', isRealTime: true };
+    }
   }
 
   if (hasRealTime) {
@@ -125,8 +141,23 @@ export function getImportantNotices(departure: Departure): string | null {
   }
 
   const delay = parseDelay((departure as unknown as { delay?: string }).delay);
-  if (delay && (delay.includes('h') || (delay.includes('m') && parseInt(delay) >= 30))) {
-    notices.push('Major delay');
+  if (delay) {
+    // Check for hours (any delay with hours is major)
+    if (delay.includes('h')) {
+      notices.push('Major delay');
+    } else if (delay.includes('m')) {
+      // Extract minutes from string like "30m" or "1h 30m"
+      const minutesMatch = delay.match(/(\d+)m/);
+      if (minutesMatch) {
+        const minutes = parseInt(minutesMatch[1]);
+        // 30+ minutes is major delay, 5-29 minutes is just delayed
+        if (minutes >= 30) {
+          notices.push('Major delay');
+        } else if (minutes >= 5) {
+          notices.push('Delayed');
+        }
+      }
+    }
   }
 
   const status = (departure as unknown as { status?: string }).status;
@@ -140,6 +171,63 @@ export function getImportantNotices(departure: Departure): string | null {
   }
 
   return notices.length > 0 ? notices.join(', ') : null;
+}
+
+/**
+ * Get status category for a departure
+ * Returns the category type for styling purposes
+ */
+export type StatusCategory = 'normal' | 'cancelled' | 'delayed' | 'bus';
+
+export function getStatusCategory(departure: Departure): StatusCategory {
+  const status = (departure as unknown as { status?: string }).status;
+  
+  if (status === 'canceled' || status === 'cancelled') {
+    return 'cancelled';
+  }
+  
+  if (isBusReplacement(departure)) {
+    return 'bus';
+  }
+  
+  const delay = parseDelay((departure as unknown as { delay?: string }).delay);
+  // Check if delayed: status is 'delayed' OR there's a delay of 5+ minutes
+  if (status === 'delayed') {
+    return 'delayed';
+  }
+  if (delay) {
+    // Extract minutes from delay string (e.g., "5m", "30m", "1h 30m")
+    const minutesMatch = delay.match(/(\d+)m/);
+    if (minutesMatch) {
+      const minutes = parseInt(minutesMatch[1]);
+      if (minutes >= 5) {
+        return 'delayed';
+      }
+    }
+    // Check for hours (any delay with hours is considered delayed)
+    if (delay.includes('h')) {
+      return 'delayed';
+    }
+  }
+  
+  return 'normal';
+}
+
+/**
+ * Get Tailwind text color classes for status categories
+ */
+export function getStatusColorClass(category: StatusCategory): string {
+  switch (category) {
+    case 'cancelled':
+      return 'text-red-600 dark:text-red-400';
+    case 'delayed':
+      return 'text-yellow-600 dark:text-yellow-400';
+    case 'bus':
+      return 'text-blue-600 dark:text-blue-400';
+    case 'normal':
+    default:
+      return 'text-black dark:text-white';
+  }
 }
 
 /**

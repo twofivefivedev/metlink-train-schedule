@@ -7,6 +7,8 @@ import {
   getRouteText,
   isBusReplacement,
   getImportantNotices,
+  getStatusCategory,
+  getStatusColorClass,
 } from '@/lib/utils/departureUtils';
 import { cn } from '@/lib/utils';
 import type { Departure } from '@/types';
@@ -17,11 +19,16 @@ interface DepartureRowProps {
 }
 
 export function DepartureRow({ departure, isMobile = false }: DepartureRowProps) {
-  const departureTime = departure.departure?.expected || departure.departure?.aimed;
+  const category = getStatusCategory(departure);
+  // For delayed trains, show expected time instead of scheduled time
+  const departureTime = category === 'delayed' && departure.departure?.expected
+    ? departure.departure.expected
+    : (departure.departure?.expected || departure.departure?.aimed);
   const status = getDepartureStatus(departure);
   const route = getRouteText(departure);
   const isBus = isBusReplacement(departure);
   const notices = getImportantNotices(departure);
+  const statusColorClass = getStatusColorClass(category);
 
   if (isMobile) {
     return (
@@ -31,13 +38,13 @@ export function DepartureRow({ departure, isMobile = false }: DepartureRowProps)
             <div className="font-semibold text-foreground text-base mb-1">
               {getStationName(departure.station).replace(' Station', '')}
             </div>
-            <div className="text-sm text-muted-foreground flex items-center">
-              {isBus && <span className="mr-2">🚌</span>}
-              {route}
-            </div>
           </div>
           <div className="text-right">
-            <div className="text-lg font-bold text-foreground">
+            <div className={`text-lg font-bold ${
+              category === 'delayed' 
+                ? statusColorClass 
+                : 'text-foreground'
+            }`}>
               {formatTime(departureTime)}
             </div>
             {departure.departure?.expected && (
@@ -46,11 +53,23 @@ export function DepartureRow({ departure, isMobile = false }: DepartureRowProps)
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={status.color}>{status.text}</Badge>
+          <span className={cn('text-sm font-medium', statusColorClass)}>
+            {category === 'bus' 
+              ? 'Bus Replacement'
+              : category === 'delayed' && status.text.includes('Delayed') 
+              ? (() => {
+                  const delayMatch = status.text.match(/Delayed\s+(.+)/);
+                  if (delayMatch) {
+                    const delayAmount = delayMatch[1].replace(/(\d+)m/, '$1 mins');
+                    return `Delayed (${delayAmount})`;
+                  }
+                  return status.text;
+                })()
+              : status.text}
+          </span>
           {status.isRealTime && (
             <span className="w-2 h-2 bg-success rounded-full" aria-label="Real-time data" />
           )}
-          {isBus && <span aria-label="Bus replacement">🚌</span>}
           {notices && notices.includes('Major delay') && (
             <span aria-label="Major delay">⚠️</span>
           )}
@@ -61,14 +80,11 @@ export function DepartureRow({ departure, isMobile = false }: DepartureRowProps)
 
   return (
     <tr className="hover:bg-muted/50 transition-colors">
-      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
-        {getStationName(departure.station).replace(' Station', '')}
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground text-center">
-        {isBus && <span className="mr-2">🚌</span>}
-        {route}
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
+      <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${
+        category === 'delayed' 
+          ? statusColorClass 
+          : 'text-foreground'
+      }`}>
         <div>
         {formatTime(departureTime)}
         {departure.departure?.expected && (
@@ -76,13 +92,28 @@ export function DepartureRow({ departure, isMobile = false }: DepartureRowProps)
         )}
         </div>
       </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
+        {getStationName(departure.station).replace(' Station', '')}
+      </td>
       <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
         <div className="flex items-center gap-2">
-          <Badge variant={status.color}>{status.text}</Badge>
+          <span className={cn('text-sm font-medium', statusColorClass)}>
+            {category === 'bus' 
+              ? 'Bus Replacement'
+              : category === 'delayed' && status.text.includes('Delayed') 
+              ? (() => {
+                  const delayMatch = status.text.match(/Delayed\s+(.+)/);
+                  if (delayMatch) {
+                    const delayAmount = delayMatch[1].replace(/(\d+)m/, '$1 mins');
+                    return `Delayed (${delayAmount})`;
+                  }
+                  return status.text;
+                })()
+              : status.text}
+          </span>
           {status.isRealTime && (
             <span className="w-2 h-2 bg-success rounded-full" aria-label="Real-time data" />
           )}
-          {isBus && <span aria-label="Bus replacement">🚌</span>}
           {notices && notices.includes('Major delay') && (
             <span aria-label="Major delay">⚠️</span>
           )}

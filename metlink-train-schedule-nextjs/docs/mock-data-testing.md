@@ -3,6 +3,7 @@
 ## Overview
 
 The mock data system allows you to test alerts and announcements without calling the real Metlink API. This is useful for:
+
 - Developing alert features
 - Testing different alert scenarios
 - Debugging alert logic
@@ -37,30 +38,29 @@ Mock data supports different scenarios via URL query parameter `mockScenario`:
 ### Available Scenarios
 
 1. **`normal`** (default)
+
    - Normal train departures with no alerts
    - Use for testing baseline functionality
 
 2. **`cancelled`**
-   - First inbound departure is cancelled
-   - Tests cancellation alerts
+
+   - First inbound departure is cancelled, others are normal/on-time
+   - Tests cancellation alerts with mixed normal trains
    - URL: `?mockScenario=cancelled`
 
 3. **`delayed`**
+
    - First inbound departure has a 20-minute delay
    - Tests delay alerts
    - URL: `?mockScenario=delayed`
 
 4. **`approaching`**
+
    - First inbound departure arrives in 3 minutes
    - Tests approaching train alerts
    - URL: `?mockScenario=approaching`
 
-5. **`multiple`**
-   - Combination of delays and cancellations
-   - Tests multiple alert conditions
-   - URL: `?mockScenario=multiple`
-
-6. **`bus-replacement`**
+5. **`bus-replacement`**
    - First inbound departure is a bus replacement
    - Tests bus replacement notices
    - URL: `?mockScenario=bus-replacement`
@@ -74,6 +74,7 @@ Mock data supports different scenarios via URL query parameter `mockScenario`:
 3. Enable cancellation alerts in preferences
 4. Visit: `http://localhost:3000?mockScenario=cancelled`
 5. You should see a cancellation alert notification
+6. Note: The cancelled scenario includes some cancelled trains mixed with normal/on-time trains
 
 ### Testing Delay Alerts
 
@@ -94,6 +95,7 @@ Mock data supports different scenarios via URL query parameter `mockScenario`:
 ## Mock Data Structure
 
 Mock departures are generated with:
+
 - Realistic departure times (relative to current time)
 - Proper station and destination information
 - Service IDs matching the selected line
@@ -148,4 +150,3 @@ To return to real API:
 2. Set `NEXT_PUBLIC_USE_MOCK_DATA=false`
 
 The application will automatically use the real Metlink API.
-
