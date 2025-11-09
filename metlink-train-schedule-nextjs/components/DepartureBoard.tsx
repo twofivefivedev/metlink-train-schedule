@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
 import { ArrowLeftRight, AlertTriangle, RefreshCw, Clock } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
@@ -17,7 +17,7 @@ import {
   type StatusCategory,
 } from '@/lib/utils/departureUtils';
 import { useCurrentTime } from '@/hooks/useWaitTime';
-import { LINE_NAMES } from '@/lib/constants';
+import { LINE_STATIONS } from '@/lib/constants';
 import type { Departure } from '@/types';
 import type { LineCode } from '@/lib/constants';
 
@@ -44,6 +44,35 @@ export function DepartureBoard({
 }: DepartureBoardProps) {
   const displayedDepartures = departures.slice(0, 10);
   const currentTime = useCurrentTime();
+  
+  // Track when departures change to trigger animations
+  const [animationKey, setAnimationKey] = useState(0);
+  const prevDepartureHashRef = useRef<string>('');
+  const isInitialMountRef = useRef(true);
+  
+  // Create a stable hash of departures to detect actual data changes
+  const departureHash = useMemo(() => {
+    return departures
+      .slice(0, 10)
+      .map(d => `${d.service_id}-${d.station}-${d.departure?.aimed}`)
+      .join('|');
+  }, [departures, direction]);
+  
+  useEffect(() => {
+    // Trigger animation on initial mount
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      setAnimationKey(1);
+      return;
+    }
+    
+    // Update animation key when departures change to force re-animation
+    // Only trigger animation if the hash actually changed
+    if (departureHash && departureHash !== prevDepartureHashRef.current) {
+      prevDepartureHashRef.current = departureHash;
+      setAnimationKey(prev => prev + 1);
+    }
+  }, [departureHash]);
   
   // Group delayed trains by trip_id to identify which stations belong to the same train
   // Only show expected time on the first station of each delayed train
@@ -279,10 +308,35 @@ export function DepartureBoard({
     }
   };
 
-  const lineName = LINE_NAMES[selectedLine] || selectedLine;
+  // Get origin station for the line
+  // The origin is the station furthest from Wellington
+  const lineStations = LINE_STATIONS[selectedLine] || [];
+  let originStationId: string | null = null;
+  
+  if (lineStations.length > 0) {
+    // Special handling for Johnsonville line - find station with "Johnsonville" in name
+    if (selectedLine === 'JVL') {
+      originStationId = lineStations.find(stationId => {
+        const stationName = getStationName(stationId);
+        return stationName.toLowerCase().includes('johnsonville');
+      }) || null;
+    }
+    // Check if array starts with WELL (Wellington) - if so, origin is last station
+    // Otherwise, origin is first station (for WRL: Masterton)
+    else if (lineStations[0] === 'WELL') {
+      originStationId = lineStations[lineStations.length - 1];
+    } else {
+      originStationId = lineStations[0];
+    }
+  }
+  
+  const originStationName = originStationId 
+    ? getStationName(originStationId).replace(' Station', '').replace(' - Stop A', '').replace(' - Stop B', '')
+    : 'Unknown';
+  
   const directionLabel = direction === 'inbound' 
-    ? `TRAINS TO WELLINGTON - ${lineName.toUpperCase()}`
-    : `TRAINS FROM WELLINGTON - ${lineName.toUpperCase()}`;
+    ? `Trains from ${originStationName} to Wellington`
+    : `Trains from Wellington to ${originStationName}`;
 
   // Format today's date
   const today = new Date();
@@ -299,16 +353,16 @@ export function DepartureBoard({
       <header className="border-b-2 border-black dark:border-white">
         <div className="max-w-7xl mx-auto px-8 py-6">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-3xl md:text-4xl font-bold tracking-wider uppercase text-black dark:text-white">
+            <h1 className="text-3xl md:text-4xl font-bold tracking-wider text-black dark:text-white">
               {directionLabel}
             </h1>
             <Button
               onClick={onDirectionToggle}
               variant="outline"
               aria-label={`Switch to ${direction === 'inbound' ? 'outbound' : 'inbound'} trains`}
-              className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors font-semibold uppercase tracking-wider px-6 py-3 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white"
+              className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors font-semibold uppercase tracking-wider px-6 py-3 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white group"
             >
-              <ArrowLeftRight className="h-4 w-4 mr-2" aria-hidden="true" />
+              <ArrowLeftRight className="h-4 w-4 mr-2 transition-transform duration-300 ease-in-out group-hover:rotate-180" aria-hidden="true" />
               Switch Direction
             </Button>
           </div>
@@ -345,7 +399,7 @@ export function DepartureBoard({
       {nextDepartureWaitTime !== null && nextDepartureWaitTime.minutes !== null && (
         <section
           aria-labelledby="wait-time-heading"
-          className="max-w-7xl mx-auto px-8 py-4"
+          className="max-w-7xl mx-auto px-8 pb-2 pt-4"
         >
           <div className={selectedNotice ? "grid grid-cols-1 md:grid-cols-2 gap-4" : ""}>
             {/* Wait Time Card */}
@@ -369,7 +423,7 @@ export function DepartureBoard({
 
             {/* Service Notice Panel - only shown when user selects a notice */}
             {selectedNotice && (
-              <div className="bg-white dark:bg-black border-2 border-black dark:border-white px-8 py-6">
+              <div className="bg-white dark:bg-black border-2 border-black dark:border-white px-8 py-6 animate-slide-in-right">
                 <h2 id="service-notice-heading" className="text-sm font-semibold uppercase tracking-wider mb-3">
                   Service Notice
                 </h2>
@@ -433,8 +487,16 @@ export function DepartureBoard({
                   });
                 };
                 
+                // Calculate animation delay for staggered effect (max 300ms)
+                const animationDelay = Math.min(index * 100, 300);
+                
                 return (
-                  <li key={index} className="px-8 py-4" role="listitem">
+                  <li 
+                    key={index} 
+                    className="px-8 py-4 animate-fade-in-slide" 
+                    style={{ animationDelay: `${animationDelay}ms`, animationFillMode: 'both' }}
+                    role="listitem"
+                  >
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <span className="font-bold uppercase text-black dark:text-white">
@@ -458,9 +520,9 @@ export function DepartureBoard({
       )}
 
       {/* Departure Board Table */}
-      <section aria-labelledby="departures-heading" className="max-w-7xl mx-auto px-8 py-8">
+      <section aria-labelledby="departures-heading" className="max-w-7xl mx-auto px-8 pt-2 pb-8">
         {loading ? (
-          <div className="bg-white dark:bg-black border-2 border-black dark:border-white">
+          <div className="bg-white dark:bg-black border-2 border-black dark:border-white animate-fade-in-scale">
             <h2 id="departures-heading" className="sr-only">
               Train Departures Table
             </h2>
@@ -485,7 +547,7 @@ export function DepartureBoard({
             </div>
           </div>
         ) : displayedDepartures.length === 0 ? (
-          <div className="text-center py-16 text-black/70 dark:text-white/70" role="status" aria-live="polite">
+          <div className="text-center py-16 text-black/70 dark:text-white/70 animate-fade-in" role="status" aria-live="polite">
             <p className="text-xl font-semibold">No trains scheduled at this time</p>
           </div>
         ) : (
@@ -524,15 +586,30 @@ export function DepartureBoard({
                 const stationId = `${tripId}-${departure.station}-${departure.departure?.aimed}`;
                 const isFirstDelayedStation = delayedTrainFirstStations.has(stationId);
                 
+                // Calculate animation delay for staggered effect (max 400ms)
+                // Increase delay to make animation more visible
+                const animationDelay = Math.min(index * 100, 400);
+                
+                // Create a unique key that includes animation key to force re-animation on data changes
+                const uniqueKey = `${departureId}-${animationKey}-${index}`;
+                
                 return (
-                  <DepartureBoardRow
-                    key={`${(departure as unknown as { trip_id?: string }).trip_id || index}-${index}`}
-                    departure={departure}
-                    index={index}
-                    onSelect={handleNoticeSelect}
-                    isSelected={departureId === selectedId}
-                    showExpectedTime={isFirstDelayedStation}
-                  />
+                  <div
+                    key={uniqueKey}
+                    className="animate-slide-up"
+                    style={{ 
+                      animationDelay: `${animationDelay}ms`, 
+                      animationFillMode: 'both',
+                    }}
+                  >
+                    <DepartureBoardRow
+                      departure={departure}
+                      index={index}
+                      onSelect={handleNoticeSelect}
+                      isSelected={departureId === selectedId}
+                      showExpectedTime={isFirstDelayedStation}
+                    />
+                  </div>
                 );
               })}
             </div>

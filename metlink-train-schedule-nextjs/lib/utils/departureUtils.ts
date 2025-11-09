@@ -77,7 +77,7 @@ export function getDepartureStatus(departure: Departure): {
 
   // Calculate delay from expected vs aimed times if both are available
   const calculatedDelayMinutes = calculateDelayMinutes(departure);
-  
+
   // Check for delays - 5+ minutes is considered delayed
   // Priority: 1) status field, 2) delay field from API, 3) calculated delay from times
   if (status === 'delayed') {
@@ -101,7 +101,7 @@ export function getDepartureStatus(departure: Departure): {
       return { text: `Delayed ${delay}`, color: 'warning', isRealTime: true };
     }
   }
-  
+
   // Check calculated delay from expected vs aimed times
   if (calculatedDelayMinutes !== null && calculatedDelayMinutes >= 5) {
     const delayText = calculatedDelayMinutes >= 60 
@@ -124,7 +124,7 @@ export function getDepartureStatus(departure: Departure): {
       }
     } else {
       // No calculated delay but has real-time data - assume on time
-      return { text: 'On Time', color: 'success', isRealTime: true };
+    return { text: 'On Time', color: 'success', isRealTime: true };
     }
   }
 
@@ -198,8 +198,8 @@ export function getImportantNotices(departure: Departure): string | null {
   
   // Extract minutes from API delay field if available
   if (delay) {
-    const minutesMatch = delay.match(/(\d+)m/);
-    if (minutesMatch) {
+      const minutesMatch = delay.match(/(\d+)m/);
+      if (minutesMatch) {
       delayMinutes = parseInt(minutesMatch[1]);
     } else if (delay.includes('h')) {
       // If hours are present, treat as major delay
@@ -216,11 +216,11 @@ export function getImportantNotices(departure: Departure): string | null {
   }
   
   if (delayMinutes !== null && delayMinutes >= 5) {
-    // 30+ minutes is major delay, 5-29 minutes is just delayed
+        // 30+ minutes is major delay, 5-29 minutes is just delayed
     if (delayMinutes >= 30) {
-      notices.push('Major delay');
+          notices.push('Major delay');
     } else {
-      notices.push('Delayed');
+          notices.push('Delayed');
     }
   }
 

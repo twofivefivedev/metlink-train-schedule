@@ -97,13 +97,13 @@ function getMetlinkClient(): AxiosInstance {
     }
     
     metlinkClientInstance = axios.create({
-      baseURL: getMetlinkApiBase(),
-      headers: {
+  baseURL: getMetlinkApiBase(),
+  headers: {
         'x-api-key': apiKey,
-        'Content-Type': 'application/json',
-      },
-      timeout: env.API_TIMEOUT_MS,
-    });
+    'Content-Type': 'application/json',
+  },
+  timeout: env.API_TIMEOUT_MS,
+});
   }
   return metlinkClientInstance;
 }
