@@ -28,8 +28,13 @@ export function checkAlertConditions(
   }
 
   // Check if departure matches the config's station selection
-  const matchesStation = config.selectedStations.includes(departure.station) ||
-    (config.filters.selectedStation && departure.station === config.filters.selectedStation);
+  const departureStation = departure.station;
+  if (!departureStation) {
+    return null;
+  }
+  
+  const matchesStation = config.selectedStations.includes(departureStation) ||
+    (config.filters.selectedStation && departureStation === config.filters.selectedStation);
   
   if (!matchesStation) {
     return null;
@@ -88,8 +93,11 @@ export function getAlertsForConfigs(
   configs.forEach(config => {
     // Filter departures matching this config
     const matchingDepartures = departures.filter(dep => {
-      const matchesStation = config.selectedStations.includes(dep.station) ||
-        (config.filters.selectedStation && dep.station === config.filters.selectedStation);
+      const depStation = dep.station;
+      if (!depStation) return false;
+      
+      const matchesStation = config.selectedStations.includes(depStation) ||
+        (config.filters.selectedStation && depStation === config.filters.selectedStation);
       const matchesDirection = checkDirection(dep, config.direction);
       const matchesLine = dep.service_id === config.line;
       return matchesStation && matchesDirection && matchesLine;
