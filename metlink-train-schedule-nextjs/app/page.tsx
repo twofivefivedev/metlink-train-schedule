@@ -9,6 +9,7 @@ import { FiltersButton } from '@/components/FiltersButton';
 import { LineSelector } from '@/components/LineSelector';
 import { StationSelector } from '@/components/StationSelector';
 import { FavoritesPanel } from '@/components/FavoritesPanel';
+import { AlertsButton } from '@/components/AlertsButton';
 import type { ScheduleConfig } from '@/lib/utils/favorites';
 import { Button } from '@/components/ui/button';
 import { sortDepartures } from '@/lib/utils/sortUtils';
@@ -203,18 +204,19 @@ export default function Home() {
                       />
                     </div>
                     <FiltersButton
-            stations={availableStations}
-            selectedStation={selectedStation}
-            onStationChange={setSelectedStation}
-            routeFilter={routeFilter}
-            onRouteFilterChange={setRouteFilter}
-            sortOption={sortOption}
-            onSortChange={setSortOption}
-            sortDirection={sortDirection}
-            onSortDirectionChange={setSortDirection}
-            onClearFilters={clearFilters}
-            hasActiveFilters={hasActiveFilters}
-          />
+                      stations={availableStations}
+                      selectedStation={selectedStation}
+                      onStationChange={setSelectedStation}
+                      routeFilter={routeFilter}
+                      onRouteFilterChange={setRouteFilter}
+                      sortOption={sortOption}
+                      onSortChange={setSortOption}
+                      sortDirection={sortDirection}
+                      onSortDirectionChange={setSortDirection}
+                      onClearFilters={clearFilters}
+                      hasActiveFilters={hasActiveFilters}
+                    />
+                    <AlertsButton />
                   </div>
                 </div>
               </div>

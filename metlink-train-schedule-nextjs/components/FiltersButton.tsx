@@ -41,11 +41,15 @@ export function FiltersButton({
         onClick={() => setIsOpen(!isOpen)}
         variant="outline"
         aria-label="Filters and sort"
-        className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors h-[42px] px-3 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white"
+        className={`bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors h-[42px] px-3 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white ${
+          hasActiveFilters ? 'ring-2 ring-black dark:ring-white ring-offset-2' : ''
+        }`}
       >
         <Filter className="h-4 w-4" aria-hidden="true" />
         {hasActiveFilters && (
-          <span className="ml-1 w-2 h-2 bg-black dark:bg-white rounded-full" aria-label="Active filters" />
+          <span className="ml-1 px-1.5 py-0.5 bg-black dark:bg-white text-white dark:text-black text-xs font-bold rounded" aria-label="Active filters">
+            !
+          </span>
         )}
       </Button>
 

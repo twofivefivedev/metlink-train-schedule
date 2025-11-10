@@ -2,16 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
-import { Star, X, Bell, BellOff, Play } from 'lucide-react';
+import { Star, X, Play } from 'lucide-react';
 import {
   loadPreferences,
   removeScheduleConfig,
-  updateAlertPreferences,
   type ScheduleConfig,
-  type AlertPreferences,
 } from '@/lib/utils/favorites';
-import { LINE_NAMES, STATION_NAMES } from '@/lib/constants';
-import type { LineCode } from '@/lib/constants';
+import { LINE_NAMES } from '@/lib/constants';
 
 interface FavoritesPanelProps {
   onConfigSelect?: (config: ScheduleConfig) => void;
@@ -40,15 +37,6 @@ export function FavoritesPanel({
     setIsOpen(false);
   };
 
-  const handleToggleAlerts = () => {
-    const newAlerts: AlertPreferences = {
-      ...preferences.alerts,
-      enabled: !preferences.alerts.enabled,
-    };
-    updateAlertPreferences(newAlerts);
-    setPreferences(loadPreferences());
-  };
-
   return (
     <div className="border-b border-black dark:border-white bg-white dark:bg-black">
       <div className="max-w-7xl mx-auto px-8 py-2">
@@ -59,7 +47,7 @@ export function FavoritesPanel({
           aria-controls="favorites-content"
         >
           <Star className={`h-4 w-4 ${preferences.configs.length > 0 ? 'fill-current' : ''}`} aria-hidden="true" />
-          Favorites & Alerts
+          Favorites
           {preferences.configs.length > 0 && (
             <span className="ml-2 px-2 py-0.5 bg-black dark:bg-white text-white dark:text-black text-xs rounded">
               {preferences.configs.length}
@@ -68,38 +56,7 @@ export function FavoritesPanel({
         </button>
 
         {isOpen && (
-          <div id="favorites-content" className="mt-4 pb-4 space-y-4">
-            {/* Alert Toggle */}
-            <div className="flex items-center justify-between p-4 border-2 border-black dark:border-white">
-              <div>
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-black dark:text-white mb-1">
-                  Alert Notifications
-                </h3>
-                <p className="text-xs text-black/70 dark:text-white/70">
-                  Get notified about delays, cancellations, and approaching trains
-                </p>
-              </div>
-              <Button
-                onClick={handleToggleAlerts}
-                variant="outline"
-                size="sm"
-                aria-label={preferences.alerts.enabled ? 'Disable alerts' : 'Enable alerts'}
-                className="bg-white dark:bg-black border border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors h-8 px-4 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white"
-              >
-                {preferences.alerts.enabled ? (
-                  <>
-                    <Bell className="h-4 w-4 mr-2" aria-hidden="true" />
-                    Enabled
-                  </>
-                ) : (
-                  <>
-                    <BellOff className="h-4 w-4 mr-2" aria-hidden="true" />
-                    Disabled
-                  </>
-                )}
-              </Button>
-            </div>
-
+          <div id="favorites-content" className="mt-4 pb-4">
             {/* Saved Configurations List */}
             <div>
               <h3 className="text-sm font-semibold uppercase tracking-wider text-black dark:text-white mb-2">
