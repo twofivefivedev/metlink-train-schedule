@@ -4,7 +4,7 @@
  */
 
 import type { Departure } from '@/types';
-import type { AlertPreferences, FavoriteRoute } from './favorites';
+import type { AlertPreferences, ScheduleConfig } from './favorites';
 import { getImportantNotices, calculateWaitTime } from './departureUtils';
 import { normalizeStationId } from '@/lib/constants';
 
@@ -15,15 +15,23 @@ export interface AlertCondition {
 }
 
 /**
- * Check if a departure matches alert conditions
+ * Check if a departure matches alert conditions for a config
  */
 export function checkAlertConditions(
   departure: Departure,
-  favorite: FavoriteRoute,
+  config: ScheduleConfig,
   alerts: AlertPreferences,
   currentTime: Date = new Date()
 ): AlertCondition | null {
   if (!alerts.enabled) {
+    return null;
+  }
+
+  // Check if departure matches the config's station selection
+  const matchesStation = config.selectedStations.includes(departure.station) ||
+    (config.filters.selectedStation && departure.station === config.filters.selectedStation);
+  
+  if (!matchesStation) {
     return null;
   }
 
@@ -34,7 +42,7 @@ export function checkAlertConditions(
       return {
         type: 'cancellation',
         departure,
-        message: `Your favorite route has been cancelled`,
+        message: `${config.name} has been cancelled`,
       };
     }
   }
@@ -46,7 +54,7 @@ export function checkAlertConditions(
       return {
         type: 'delay',
         departure,
-        message: `Your favorite route has a major delay`,
+        message: `${config.name} has a major delay`,
       };
     }
   }
@@ -58,7 +66,7 @@ export function checkAlertConditions(
       return {
         type: 'approaching',
         departure,
-        message: `Your train is arriving in ${waitTime.displayText}`,
+        message: `${config.name} train is arriving in ${waitTime.displayText}`,
       };
     }
   }
@@ -67,28 +75,29 @@ export function checkAlertConditions(
 }
 
 /**
- * Get all alerts for favorite routes
+ * Get all alerts for saved configurations
  */
-export function getAlertsForFavorites(
+export function getAlertsForConfigs(
   departures: Departure[],
-  favorites: FavoriteRoute[],
+  configs: ScheduleConfig[],
   alerts: AlertPreferences,
   currentTime: Date = new Date()
 ): AlertCondition[] {
   const alertConditions: AlertCondition[] = [];
 
-  favorites.forEach(favorite => {
-    // Filter departures matching this favorite
+  configs.forEach(config => {
+    // Filter departures matching this config
     const matchingDepartures = departures.filter(dep => {
-      const matchesStation = dep.station === favorite.station;
-      const matchesDirection = checkDirection(dep, favorite.direction);
-      const matchesLine = dep.service_id === favorite.line;
+      const matchesStation = config.selectedStations.includes(dep.station) ||
+        (config.filters.selectedStation && dep.station === config.filters.selectedStation);
+      const matchesDirection = checkDirection(dep, config.direction);
+      const matchesLine = dep.service_id === config.line;
       return matchesStation && matchesDirection && matchesLine;
     });
 
     // Check each matching departure for alert conditions
     matchingDepartures.forEach(departure => {
-      const condition = checkAlertConditions(departure, favorite, alerts, currentTime);
+      const condition = checkAlertConditions(departure, config, alerts, currentTime);
       if (condition) {
         alertConditions.push(condition);
       }
@@ -96,6 +105,20 @@ export function getAlertsForFavorites(
   });
 
   return alertConditions;
+}
+
+/**
+ * Get all alerts for favorite routes (legacy - for backward compatibility)
+ * @deprecated Use getAlertsForConfigs instead
+ */
+export function getAlertsForFavorites(
+  departures: Departure[],
+  favorites: any[],
+  alerts: AlertPreferences,
+  currentTime: Date = new Date()
+): AlertCondition[] {
+  // Legacy function - return empty array as old favorites are migrated to configs
+  return [];
 }
 
 /**

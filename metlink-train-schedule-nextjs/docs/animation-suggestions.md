@@ -16,6 +16,7 @@ This document outlines performant CSS-based animation suggestions that fit the m
 **Location**: `components/DepartureBoard.tsx` - Loading state in table (line ~508)
 
 **Animation**: Fade in with subtle scale
+
 ```css
 @keyframes fadeInScale {
   from {
@@ -34,6 +35,7 @@ This document outlines performant CSS-based animation suggestions that fit the m
 ```
 
 **Implementation**: Add to loading state div
+
 - Duration: 300ms
 - Easing: ease-out
 - Properties: opacity, transform (scale)
@@ -43,6 +45,7 @@ This document outlines performant CSS-based animation suggestions that fit the m
 **Location**: `components/DepartureBoard.tsx` - DepartureBoardRow component (line ~643)
 
 **Animation**: Staggered fade-in from bottom
+
 ```css
 @keyframes slideUpFade {
   from {
@@ -61,16 +64,29 @@ This document outlines performant CSS-based animation suggestions that fit the m
 }
 
 /* Stagger animation based on index */
-.departure-row:nth-child(1) { animation-delay: 0ms; }
-.departure-row:nth-child(2) { animation-delay: 50ms; }
-.departure-row:nth-child(3) { animation-delay: 100ms; }
-.departure-row:nth-child(4) { animation-delay: 150ms; }
-.departure-row:nth-child(5) { animation-delay: 200ms; }
+.departure-row:nth-child(1) {
+  animation-delay: 0ms;
+}
+.departure-row:nth-child(2) {
+  animation-delay: 50ms;
+}
+.departure-row:nth-child(3) {
+  animation-delay: 100ms;
+}
+.departure-row:nth-child(4) {
+  animation-delay: 150ms;
+}
+.departure-row:nth-child(5) {
+  animation-delay: 200ms;
+}
 /* Cap at 250ms delay for remaining rows */
-.departure-row:nth-child(n+6) { animation-delay: 250ms; }
+.departure-row:nth-child(n + 6) {
+  animation-delay: 250ms;
+}
 ```
 
 **Implementation**: Add to row div with index-based delay
+
 - Duration: 400ms per row
 - Stagger: 50ms between rows
 - Max delay: 250ms (rows 6+ animate together)
@@ -80,6 +96,7 @@ This document outlines performant CSS-based animation suggestions that fit the m
 **Location**: `components/DepartureBoard.tsx` - Direction toggle button (line ~330)
 
 **Animation**: Icon rotation on click
+
 ```css
 .direction-toggle-icon {
   transition: transform 0.3s ease-in-out;
@@ -91,6 +108,7 @@ This document outlines performant CSS-based animation suggestions that fit the m
 ```
 
 **Implementation**: Add rotation class on click
+
 - Duration: 300ms
 - Easing: ease-in-out
 - Property: transform (rotate)
@@ -100,6 +118,7 @@ This document outlines performant CSS-based animation suggestions that fit the m
 **Location**: `components/DepartureBoard.tsx` - Status colors (line ~660)
 
 **Animation**: Smooth color transitions
+
 ```css
 .status-color-transition {
   transition: color 0.3s ease-out, background-color 0.3s ease-out;
@@ -107,6 +126,7 @@ This document outlines performant CSS-based animation suggestions that fit the m
 ```
 
 **Implementation**: Already partially implemented with `transition-colors`
+
 - Duration: 300ms
 - Properties: color, background-color
 - Note: Already using Tailwind's `transition-colors` - ensure it's applied consistently
@@ -116,6 +136,7 @@ This document outlines performant CSS-based animation suggestions that fit the m
 **Location**: `components/DepartureBoard.tsx` - Service notice panel (line ~396)
 
 **Animation**: Slide in from right with fade
+
 ```css
 @keyframes slideInRight {
   from {
@@ -134,6 +155,7 @@ This document outlines performant CSS-based animation suggestions that fit the m
 ```
 
 **Implementation**: Add when `selectedNotice` becomes truthy
+
 - Duration: 400ms
 - Easing: ease-out
 - Properties: opacity, transform (translateX)
@@ -143,9 +165,11 @@ This document outlines performant CSS-based animation suggestions that fit the m
 **Location**: `components/DepartureBoard.tsx` - Wait time display (line ~384)
 
 **Animation**: Subtle pulse when minutes change
+
 ```css
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
   }
   50% {
@@ -163,6 +187,7 @@ This document outlines performant CSS-based animation suggestions that fit the m
 ```
 
 **Implementation**: Trigger on minutes value change
+
 - Duration: 400ms
 - Scale: 1.02 (very subtle)
 - Only trigger when value actually changes
@@ -172,6 +197,7 @@ This document outlines performant CSS-based animation suggestions that fit the m
 **Location**: `components/DepartureBoard.tsx` - Warning list items (line ~462)
 
 **Animation**: Fade in with slight slide
+
 ```css
 @keyframes fadeInSlide {
   from {
@@ -189,13 +215,22 @@ This document outlines performant CSS-based animation suggestions that fit the m
   animation-fill-mode: both;
 }
 
-.warning-item:nth-child(1) { animation-delay: 0ms; }
-.warning-item:nth-child(2) { animation-delay: 100ms; }
-.warning-item:nth-child(3) { animation-delay: 200ms; }
-.warning-item:nth-child(n+4) { animation-delay: 300ms; }
+.warning-item:nth-child(1) {
+  animation-delay: 0ms;
+}
+.warning-item:nth-child(2) {
+  animation-delay: 100ms;
+}
+.warning-item:nth-child(3) {
+  animation-delay: 200ms;
+}
+.warning-item:nth-child(n + 4) {
+  animation-delay: 300ms;
+}
 ```
 
 **Implementation**: Add to warning list items
+
 - Duration: 300ms per item
 - Stagger: 100ms between items
 - Max delay: 300ms
@@ -205,6 +240,7 @@ This document outlines performant CSS-based animation suggestions that fit the m
 **Location**: `components/DepartureBoard.tsx` - Refresh button (line ~361)
 
 **Animation**: Already implemented with `animate-spin`
+
 - Current: Uses Tailwind's `animate-spin` class
 - Status: Already working correctly
 - No changes needed
@@ -214,6 +250,7 @@ This document outlines performant CSS-based animation suggestions that fit the m
 **Location**: `components/DepartureBoard.tsx` - Selected row state (line ~650)
 
 **Animation**: Smooth ring appearance
+
 ```css
 .selected-row-ring {
   transition: ring-width 0.2s ease-out, ring-color 0.2s ease-out;
@@ -221,6 +258,7 @@ This document outlines performant CSS-based animation suggestions that fit the m
 ```
 
 **Implementation**: Enhance existing ring transition
+
 - Duration: 200ms
 - Properties: ring-width, ring-color
 - Note: Tailwind's ring utilities already handle this, but can be enhanced
@@ -230,6 +268,7 @@ This document outlines performant CSS-based animation suggestions that fit the m
 **Location**: `components/DepartureBoard.tsx` - Empty state message (line ~513)
 
 **Animation**: Fade in
+
 ```css
 @keyframes fadeIn {
   from {
@@ -246,6 +285,7 @@ This document outlines performant CSS-based animation suggestions that fit the m
 ```
 
 **Implementation**: Add to empty state div
+
 - Duration: 500ms
 - Easing: ease-out
 - Property: opacity
@@ -286,37 +326,37 @@ module.exports = {
   theme: {
     extend: {
       animation: {
-        'fade-in': 'fadeIn 0.3s ease-out',
-        'fade-in-scale': 'fadeInScale 0.3s ease-out',
-        'slide-up': 'slideUpFade 0.4s ease-out',
-        'slide-in-right': 'slideInRight 0.4s ease-out',
-        'pulse-subtle': 'pulse 0.4s ease-out',
+        "fade-in": "fadeIn 0.3s ease-out",
+        "fade-in-scale": "fadeInScale 0.3s ease-out",
+        "slide-up": "slideUpFade 0.4s ease-out",
+        "slide-in-right": "slideInRight 0.4s ease-out",
+        "pulse-subtle": "pulse 0.4s ease-out",
       },
       keyframes: {
         fadeIn: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
         },
         fadeInScale: {
-          '0%': { opacity: '0', transform: 'scale(0.98)' },
-          '100%': { opacity: '1', transform: 'scale(1)' },
+          "0%": { opacity: "0", transform: "scale(0.98)" },
+          "100%": { opacity: "1", transform: "scale(1)" },
         },
         slideUpFade: {
-          '0%': { opacity: '0', transform: 'translateY(8px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
+          "0%": { opacity: "0", transform: "translateY(8px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
         },
         slideInRight: {
-          '0%': { opacity: '0', transform: 'translateX(20px)' },
-          '100%': { opacity: '1', transform: 'translateX(0)' },
+          "0%": { opacity: "0", transform: "translateX(20px)" },
+          "100%": { opacity: "1", transform: "translateX(0)" },
         },
         pulse: {
-          '0%, 100%': { transform: 'scale(1)' },
-          '50%': { transform: 'scale(1.02)' },
+          "0%, 100%": { transform: "scale(1)" },
+          "50%": { transform: "scale(1.02)" },
         },
       },
     },
   },
-}
+};
 ```
 
 ### Performance Considerations
@@ -337,11 +377,13 @@ module.exports = {
 ## Priority Implementation Order
 
 1. **High Priority** (Immediate UX improvement):
+
    - Loading state fade-in (#1)
    - Table row appearances (#2)
    - Service notice panel (#5)
 
 2. **Medium Priority** (Polish):
+
    - Direction toggle rotation (#3)
    - Warning items (#7)
    - Empty state (#10)
@@ -360,4 +402,3 @@ module.exports = {
 - [ ] Check performance with DevTools Performance tab
 - [ ] Ensure animations don't block user interactions
 - [ ] Test with slow 3G connection (animations should still work)
-

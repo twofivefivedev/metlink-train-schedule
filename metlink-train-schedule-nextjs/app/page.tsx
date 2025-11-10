@@ -8,7 +8,8 @@ import { LoadingSkeleton } from '@/components/LoadingSkeleton';
 import { FiltersButton } from '@/components/FiltersButton';
 import { LineSelector } from '@/components/LineSelector';
 import { StationSelector } from '@/components/StationSelector';
-import { FavoritesButton } from '@/components/FavoritesButton';
+import { FavoritesPanel } from '@/components/FavoritesPanel';
+import type { ScheduleConfig } from '@/lib/utils/favorites';
 import { Button } from '@/components/ui/button';
 import { sortDepartures } from '@/lib/utils/sortUtils';
 import { getRouteText, isBusReplacement } from '@/lib/utils/departureUtils';
@@ -127,6 +128,19 @@ export default function Home() {
     setSortDirection('asc');
   };
 
+  const handleConfigSelect = (config: ScheduleConfig) => {
+    setSelectedLine(config.line);
+    setSelectedStations(prev => ({
+      ...prev,
+      [config.line]: config.selectedStations,
+    }));
+    setDirection(config.direction);
+    setSelectedStation(config.filters.selectedStation);
+    setRouteFilter(config.filters.routeFilter);
+    setSortOption(config.filters.sortOption);
+    setSortDirection(config.filters.sortDirection);
+  };
+
   if (loading && departures.inbound.length === 0 && departures.outbound.length === 0) {
     return <LoadingSkeleton />;
   }
@@ -166,6 +180,11 @@ export default function Home() {
         )}
 
         <main id="main-content" role="main">
+          {/* Favorites Panel */}
+          <FavoritesPanel
+            onConfigSelect={handleConfigSelect}
+          />
+          
           {/* Controls Section */}
           <div className="border-b-2 border-black dark:border-white bg-white dark:bg-black">
             <div className="max-w-7xl mx-auto px-8 py-4">
@@ -183,11 +202,6 @@ export default function Home() {
                         onStationsChange={handleStationsChange}
                       />
                     </div>
-                    <FavoritesButton
-                      selectedStation={selectedStation}
-                      selectedDirection={direction}
-                      selectedLine={selectedLine}
-                    />
                     <FiltersButton
             stations={availableStations}
             selectedStation={selectedStation}
@@ -215,6 +229,13 @@ export default function Home() {
             loading={loading}
             onRefresh={refresh}
             selectedLine={selectedLine}
+            selectedStations={selectedStations[selectedLine] || []}
+            filters={{
+              selectedStation,
+              routeFilter,
+              sortOption,
+              sortDirection,
+            }}
           />
         </main>
       </div>

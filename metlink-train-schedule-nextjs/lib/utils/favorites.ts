@@ -1,8 +1,27 @@
 /**
  * Favorites and alerts utility functions
- * Manages user preferences for favorite routes/stations and alerts
+ * Manages user preferences for favorite schedule configurations and alerts
  */
 
+import type { LineCode } from '@/lib/constants';
+import type { SortOption, SortDirection } from './sortUtils';
+
+export interface ScheduleConfig {
+  id: string;
+  name: string;
+  line: LineCode;
+  selectedStations: string[];
+  direction: 'inbound' | 'outbound';
+  filters: {
+    selectedStation: string | null;
+    routeFilter: 'all' | 'express' | 'all-stops';
+    sortOption: SortOption;
+    sortDirection: SortDirection;
+  };
+  createdAt: string;
+}
+
+// Legacy interface for backward compatibility during migration
 export interface FavoriteRoute {
   id: string;
   station: string;
@@ -20,13 +39,15 @@ export interface AlertPreferences {
 }
 
 export interface UserPreferences {
-  favorites: FavoriteRoute[];
+  configs: ScheduleConfig[];
+  favorites: FavoriteRoute[]; // Legacy - kept for migration compatibility
   alerts: AlertPreferences;
 }
 
 const STORAGE_KEY = 'metlink-preferences';
 
 const DEFAULT_PREFERENCES: UserPreferences = {
+  configs: [],
   favorites: [],
   alerts: {
     enabled: false,
@@ -49,14 +70,39 @@ export function loadPreferences(): UserPreferences {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
-      return {
+      const preferences: UserPreferences = {
         ...DEFAULT_PREFERENCES,
         ...parsed,
+        configs: parsed.configs || [],
+        favorites: parsed.favorites || [],
         alerts: {
           ...DEFAULT_PREFERENCES.alerts,
           ...parsed.alerts,
         },
       };
+      
+      // Migrate old favorites to new configs format if needed
+      if (parsed.favorites && parsed.favorites.length > 0 && (!parsed.configs || parsed.configs.length === 0)) {
+        preferences.configs = parsed.favorites.map((fav: FavoriteRoute) => ({
+          id: fav.id,
+          name: `${fav.station} - ${fav.direction === 'inbound' ? 'To Wellington' : 'From Wellington'}`,
+          line: fav.line as LineCode,
+          selectedStations: [fav.station],
+          direction: fav.direction,
+          filters: {
+            selectedStation: fav.station,
+            routeFilter: 'all' as const,
+            sortOption: 'time' as SortOption,
+            sortDirection: 'asc' as SortDirection,
+          },
+          createdAt: fav.createdAt,
+        }));
+        // Clear old favorites after migration
+        preferences.favorites = [];
+        savePreferences(preferences);
+      }
+      
+      return preferences;
     }
   } catch (error) {
     console.error('Failed to load preferences:', error);
@@ -81,7 +127,56 @@ export function savePreferences(preferences: UserPreferences): void {
 }
 
 /**
- * Add a favorite route
+ * Add a schedule configuration
+ */
+export function addScheduleConfig(config: Omit<ScheduleConfig, 'id' | 'createdAt'>): void {
+  const preferences = loadPreferences();
+  const newConfig: ScheduleConfig = {
+    ...config,
+    id: `config-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    createdAt: new Date().toISOString(),
+  };
+
+  preferences.configs.push(newConfig);
+  savePreferences(preferences);
+}
+
+/**
+ * Remove a schedule configuration
+ */
+export function removeScheduleConfig(configId: string): void {
+  const preferences = loadPreferences();
+  preferences.configs = preferences.configs.filter(c => c.id !== configId);
+  savePreferences(preferences);
+}
+
+/**
+ * Update a schedule configuration
+ */
+export function updateScheduleConfig(configId: string, updates: Partial<ScheduleConfig>): void {
+  const preferences = loadPreferences();
+  const index = preferences.configs.findIndex(c => c.id === configId);
+  if (index !== -1) {
+    preferences.configs[index] = {
+      ...preferences.configs[index],
+      ...updates,
+    };
+    savePreferences(preferences);
+  }
+}
+
+/**
+ * Get a schedule configuration by ID
+ */
+export function getScheduleConfig(configId: string): ScheduleConfig | null {
+  const preferences = loadPreferences();
+  return preferences.configs.find(c => c.id === configId) || null;
+}
+
+// Legacy functions for backward compatibility (deprecated)
+/**
+ * Add a favorite route (legacy - use addScheduleConfig instead)
+ * @deprecated Use addScheduleConfig instead
  */
 export function addFavorite(favorite: Omit<FavoriteRoute, 'id' | 'createdAt'>): void {
   const preferences = loadPreferences();
@@ -105,7 +200,8 @@ export function addFavorite(favorite: Omit<FavoriteRoute, 'id' | 'createdAt'>): 
 }
 
 /**
- * Remove a favorite route
+ * Remove a favorite route (legacy)
+ * @deprecated Use removeScheduleConfig instead
  */
 export function removeFavorite(favoriteId: string): void {
   const preferences = loadPreferences();
@@ -114,7 +210,8 @@ export function removeFavorite(favoriteId: string): void {
 }
 
 /**
- * Check if a route is favorited
+ * Check if a route is favorited (legacy)
+ * @deprecated Check configs instead
  */
 export function isFavorite(
   station: string,

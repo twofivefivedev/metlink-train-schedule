@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
-import { ArrowLeftRight, AlertTriangle, RefreshCw, Clock } from 'lucide-react';
+import { ArrowLeftRight, AlertTriangle, RefreshCw, Clock, BookmarkPlus } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
 import {
   getDepartureStatus,
@@ -18,8 +18,12 @@ import {
 } from '@/lib/utils/departureUtils';
 import { useCurrentTime } from '@/hooks/useWaitTime';
 import { LINE_STATIONS } from '@/lib/constants';
+import { addScheduleConfig } from '@/lib/utils/favorites';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog';
+import { Input } from './ui/input';
 import type { Departure } from '@/types';
 import type { LineCode } from '@/lib/constants';
+import type { SortOption, SortDirection } from '@/lib/utils/sortUtils';
 
 interface DepartureBoardProps {
   departures: Departure[];
@@ -30,6 +34,14 @@ interface DepartureBoardProps {
   loading?: boolean;
   onRefresh: () => void;
   selectedLine?: LineCode;
+  selectedStations?: string[];
+  filters?: {
+    selectedStation: string | null;
+    routeFilter: 'all' | 'express' | 'all-stops';
+    sortOption: SortOption;
+    sortDirection: SortDirection;
+  };
+  onConfigSaved?: () => void;
 }
 
 export function DepartureBoard({
@@ -41,7 +53,17 @@ export function DepartureBoard({
   loading = false,
   onRefresh,
   selectedLine = 'WRL',
+  selectedStations = [],
+  filters = {
+    selectedStation: null,
+    routeFilter: 'all',
+    sortOption: 'time',
+    sortDirection: 'asc',
+  },
+  onConfigSaved,
 }: DepartureBoardProps) {
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [configName, setConfigName] = useState('');
   const displayedDepartures = departures.slice(0, 10);
   const currentTime = useCurrentTime();
   
@@ -347,6 +369,22 @@ export function DepartureBoard({
     day: 'numeric',
   });
 
+  const handleSaveConfig = () => {
+    if (!configName.trim()) return;
+    
+    addScheduleConfig({
+      name: configName.trim(),
+      line: selectedLine,
+      selectedStations: selectedStations,
+      direction: direction,
+      filters: filters,
+    });
+    
+    setConfigName('');
+    setSaveDialogOpen(false);
+    onConfigSaved?.();
+  };
+
   return (
     <div className="min-h-screen bg-white dark:bg-black text-black dark:text-white">
       {/* Header */}
@@ -356,15 +394,26 @@ export function DepartureBoard({
             <h1 className="text-3xl md:text-4xl font-bold tracking-wider text-black dark:text-white">
               {directionLabel}
             </h1>
-            <Button
-              onClick={onDirectionToggle}
-              variant="outline"
-              aria-label={`Switch to ${direction === 'inbound' ? 'outbound' : 'inbound'} trains`}
-              className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors font-semibold uppercase tracking-wider px-6 py-3 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white group"
-            >
-              <ArrowLeftRight className="h-4 w-4 mr-2 transition-transform duration-300 ease-in-out group-hover:rotate-180" aria-hidden="true" />
-              Switch Direction
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => setSaveDialogOpen(true)}
+                variant="outline"
+                aria-label="Save current schedule configuration"
+                className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors font-semibold uppercase tracking-wider px-4 py-3 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white"
+              >
+                <BookmarkPlus className="h-4 w-4 mr-2" aria-hidden="true" />
+                Save
+              </Button>
+              <Button
+                onClick={onDirectionToggle}
+                variant="outline"
+                aria-label={`Switch to ${direction === 'inbound' ? 'outbound' : 'inbound'} trains`}
+                className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors font-semibold uppercase tracking-wider px-6 py-3 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white group"
+              >
+                <ArrowLeftRight className="h-4 w-4 mr-2 transition-transform duration-300 ease-in-out group-hover:rotate-180" aria-hidden="true" />
+                Switch Direction
+              </Button>
+            </div>
           </div>
           <div className="flex items-center gap-4 text-sm font-mono text-black/70 dark:text-white/70" role="status" aria-live="polite">
             <time dateTime={today.toISOString()}>{todayFormatted}</time>
@@ -616,6 +665,54 @@ export function DepartureBoard({
           </div>
         )}
       </section>
+
+      {/* Save Config Dialog */}
+      <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+        <DialogContent className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white">
+          <DialogHeader>
+            <DialogTitle className="text-black dark:text-white font-bold uppercase tracking-wider">
+              Save Schedule Configuration
+            </DialogTitle>
+            <DialogDescription className="text-black/70 dark:text-white/70">
+              Give this schedule configuration a name (e.g., "School Commute", "Home to Wellington")
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <Input
+              type="text"
+              placeholder="e.g., School Commute"
+              value={configName}
+              onChange={(e) => setConfigName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && configName.trim()) {
+                  handleSaveConfig();
+                }
+              }}
+              className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white focus:ring-2 focus:ring-black dark:focus:ring-white"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                setSaveDialogOpen(false);
+                setConfigName('');
+              }}
+              variant="outline"
+              className="bg-white dark:bg-black border border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveConfig}
+              disabled={!configName.trim()}
+              className="bg-black dark:bg-white text-white dark:text-black hover:bg-black/90 dark:hover:bg-white/90 border-2 border-black dark:border-white font-semibold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

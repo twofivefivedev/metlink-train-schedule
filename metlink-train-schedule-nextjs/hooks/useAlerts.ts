@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { loadPreferences } from '@/lib/utils/favorites';
-import { getAlertsForFavorites } from '@/lib/utils/alertUtils';
+import { getAlertsForConfigs } from '@/lib/utils/alertUtils';
 import { useCurrentTime } from './useWaitTime';
 import type { Departure } from '@/types';
 import type { AlertCondition } from '@/lib/utils/alertUtils';
@@ -20,15 +20,15 @@ export function useAlerts(departures: DeparturesData): AlertCondition[] {
 
   useEffect(() => {
     const preferences = loadPreferences();
-    if (!preferences.alerts.enabled || preferences.favorites.length === 0) {
+    if (!preferences.alerts.enabled || preferences.configs.length === 0) {
       setAlerts([]);
       return;
     }
 
     const allDepartures = [...departures.inbound, ...departures.outbound];
-    const alertConditions = getAlertsForFavorites(
+    const alertConditions = getAlertsForConfigs(
       allDepartures,
-      preferences.favorites,
+      preferences.configs,
       preferences.alerts,
       currentTime
     );
