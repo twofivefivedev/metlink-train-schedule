@@ -5,6 +5,7 @@
 
 import { isSupabaseAvailable } from './supabaseAdmin';
 import { getIncidentsRepository, type ServiceIncidentRecord } from './db';
+import { getIncidentQueue } from './incidentQueue';
 import { logger } from './logger';
 import type { Departure } from '@/types';
 import { getStatusCategory, isBusReplacement } from '@/lib/utils/departureUtils';
@@ -119,16 +120,12 @@ export function extractIncidentsFromDepartures(
 /**
  * Record service incidents from departures
  * Only records incidents (cancellations, delays >= 5min, bus replacements)
+ * Uses background queue for non-blocking processing
  */
 export async function recordServiceIncidents(
   departures: Departure[],
   station?: string
 ): Promise<void> {
-  if (!(await isSupabaseAvailable())) {
-    logger.debug('Supabase not available, skipping incident recording');
-    return;
-  }
-
   try {
     const incidents = extractIncidentsFromDepartures(departures, station);
     
@@ -136,10 +133,11 @@ export async function recordServiceIncidents(
       return; // No incidents to record
     }
 
-    const incidentsRepo = getIncidentsRepository();
-    await incidentsRepo.insert(incidents);
+    // Use background queue for non-blocking processing
+    const queue = getIncidentQueue();
+    await queue.enqueue(incidents);
 
-    logger.debug('Service incidents recorded', {
+    logger.debug('Service incidents queued for background processing', {
       count: incidents.length,
       station,
       byType: {
@@ -149,7 +147,7 @@ export async function recordServiceIncidents(
       },
     });
   } catch (error) {
-    logger.error('Failed to record service incidents', {
+    logger.error('Failed to queue service incidents', {
       error: error instanceof Error ? error.message : String(error),
       count: departures.length,
       station,

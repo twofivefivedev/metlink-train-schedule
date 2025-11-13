@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { LineSelector } from './LineSelector';
 import { LINE_NAMES } from '@/lib/constants';
@@ -53,14 +53,92 @@ const COLORS = {
   bus_replacement: '#3b82f6',
 };
 
+// Load preferences from localStorage
+function loadPreferences(): { line: LineCode; timeRange: '24h' | '7d' | '30d' } {
+  if (typeof window === 'undefined') {
+    return { line: 'WRL', timeRange: '7d' };
+  }
+  
+  try {
+    const stored = localStorage.getItem('analytics-preferences');
+    if (stored) {
+      const prefs = JSON.parse(stored);
+      return {
+        line: prefs.line || 'WRL',
+        timeRange: prefs.timeRange || '7d',
+      };
+    }
+  } catch (error) {
+    // Ignore parse errors
+  }
+  
+  return { line: 'WRL', timeRange: '7d' };
+}
+
+// Save preferences to localStorage
+function savePreferences(line: LineCode, timeRange: '24h' | '7d' | '30d'): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  
+  try {
+    localStorage.setItem('analytics-preferences', JSON.stringify({ line, timeRange }));
+  } catch (error) {
+    // Ignore storage errors
+  }
+}
+
 export function IncidentsDashboard() {
+  // Load preferences in useState initializer (runs once on mount)
   const [summary, setSummary] = useState<IncidentSummary | null>(null);
   const [recentIncidents, setRecentIncidents] = useState<Incident[]>([]);
   const [performanceStats, setPerformanceStats] = useState<PerformanceStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d'>('7d');
-  const [selectedLine, setSelectedLine] = useState<LineCode>('WRL');
+  const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d'>(() => {
+    const prefs = loadPreferences();
+    return prefs.timeRange;
+  });
+  const [selectedLine, setSelectedLine] = useState<LineCode>(() => {
+    const prefs = loadPreferences();
+    return prefs.line;
+  });
+
+  // Memoized handlers
+  const handleTimeRangeChange = useCallback((range: '24h' | '7d' | '30d') => {
+    setTimeRange(range);
+    savePreferences(selectedLine, range);
+  }, [selectedLine]);
+
+  const handleLineChange = useCallback((line: LineCode) => {
+    setSelectedLine(line);
+    savePreferences(line, timeRange);
+  }, [timeRange]);
+
+  // Memoized computed values (must be before conditional returns)
+  const pieData = useMemo(() => {
+    if (!summary) return [];
+    return [
+      { name: 'Cancelled', value: summary.cancelled, color: COLORS.cancelled },
+      { name: 'Delayed', value: summary.delayed, color: COLORS.delayed },
+      { name: 'Bus Replacement', value: summary.busReplacement, color: COLORS.bus_replacement },
+    ].filter((item) => item.value > 0);
+  }, [summary]);
+
+  const chartData = useMemo(() => {
+    const incidentsByDate = recentIncidents.reduce((acc, incident) => {
+      const date = new Date(incident.createdAt).toLocaleDateString();
+      if (!acc[date]) {
+        acc[date] = { date, cancelled: 0, delayed: 0, bus_replacement: 0 };
+      }
+      acc[date][incident.incidentType]++;
+      return acc;
+    }, {} as Record<string, { date: string; cancelled: number; delayed: number; bus_replacement: number }>);
+
+    return Object.values(incidentsByDate).sort((a, b) =>
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+  }, [recentIncidents]);
 
   useEffect(() => {
     async function fetchData() {
@@ -148,28 +226,6 @@ export function IncidentsDashboard() {
     );
   }
 
-  const pieData = summary
-    ? [
-        { name: 'Cancelled', value: summary.cancelled, color: COLORS.cancelled },
-        { name: 'Delayed', value: summary.delayed, color: COLORS.delayed },
-        { name: 'Bus Replacement', value: summary.busReplacement, color: COLORS.bus_replacement },
-      ].filter((item) => item.value > 0)
-    : [];
-
-  // Group incidents by date for chart
-  const incidentsByDate = recentIncidents.reduce((acc, incident) => {
-    const date = new Date(incident.createdAt).toLocaleDateString();
-    if (!acc[date]) {
-      acc[date] = { date, cancelled: 0, delayed: 0, bus_replacement: 0 };
-    }
-    acc[date][incident.incidentType]++;
-    return acc;
-  }, {} as Record<string, { date: string; cancelled: number; delayed: number; bus_replacement: number }>);
-
-  const chartData = Object.values(incidentsByDate).sort((a, b) =>
-    new Date(a.date).getTime() - new Date(b.date).getTime()
-  );
-
   return (
     <div className="space-y-6">
       {/* Filters Section */}
@@ -180,7 +236,7 @@ export function IncidentsDashboard() {
         <div className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <LineSelector selectedLine={selectedLine} onLineChange={setSelectedLine} />
+              <LineSelector selectedLine={selectedLine} onLineChange={handleLineChange} />
             </div>
             <div>
               <label className="block text-sm font-semibold uppercase mb-2 text-black dark:text-white">
@@ -190,7 +246,7 @@ export function IncidentsDashboard() {
                 {(['24h', '7d', '30d'] as const).map((range) => (
                   <button
                     key={range}
-                    onClick={() => setTimeRange(range)}
+                    onClick={() => handleTimeRangeChange(range)}
                     className={`px-4 py-2 border-2 border-black dark:border-white font-semibold uppercase transition-colors ${
                       timeRange === range
                         ? 'bg-black dark:bg-white text-white dark:text-black'
