@@ -1,8 +1,10 @@
 import type React from "react"
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Geist_Mono } from "next/font/google"
 import "./globals.css"
 import { Suspense } from "react"
+import { ThemeProvider } from "@/components/theme-provider"
+import { ServiceWorkerRegistration } from "./sw-register"
 
 const geistMono = Geist_Mono({
   subsets: ["latin"],
@@ -12,6 +14,19 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Wairarapa Train Schedule",
   description: "Real-time train departures for Wellington, Petone, and Featherston",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Train Schedule",
+  },
+}
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: "#000000",
 }
 
 export default function RootLayout({
@@ -20,9 +35,17 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${geistMono.variable} antialiased`}>
+    <html lang="en" className={`${geistMono.variable} antialiased`} suppressHydrationWarning>
       <body className="font-mono">
-        <Suspense>{children}</Suspense>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="light"
+          enableSystem={false}
+          disableTransitionOnChange={false}
+        >
+          <Suspense>{children}</Suspense>
+          <ServiceWorkerRegistration />
+        </ThemeProvider>
       </body>
     </html>
   )

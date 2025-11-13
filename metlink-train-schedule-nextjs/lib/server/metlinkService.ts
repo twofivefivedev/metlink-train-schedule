@@ -4,37 +4,120 @@
  */
 
 import axios, { AxiosInstance } from 'axios';
-import { METLINK_API_BASE, SERVICE_IDS } from '@/lib/constants';
+import { SERVICE_IDS, getStationPlatformVariants } from '@/lib/constants';
+import { getMetlinkApiBase, env } from '@/lib/config/env';
 import { retry } from './retry';
 import { logger } from './logger';
 import type { Departure, MetlinkApiResponse } from '@/types';
 
-const metlinkApiKey = process.env.METLINK_API_KEY;
-if (!metlinkApiKey) {
-  throw new Error('METLINK_API_KEY environment variable is required');
+/**
+ * Request metrics tracker
+ * Tracks API call volume to monitor usage and prevent rate limiting
+ */
+class RequestMetrics {
+  private requestCount: number = 0;
+  private requestCountByHour: Map<number, number> = new Map();
+
+  /**
+   * Increment request counter
+   */
+  increment(): void {
+    this.requestCount++;
+    const currentHour = Math.floor(Date.now() / (60 * 60 * 1000));
+    const currentCount = this.requestCountByHour.get(currentHour) || 0;
+    this.requestCountByHour.set(currentHour, currentCount + 1);
+    
+    // Log metrics periodically (every 10 requests)
+    if (this.requestCount % 10 === 0) {
+      this.logMetrics();
+    }
+  }
+
+  /**
+   * Get current request count
+   */
+  getCount(): number {
+    return this.requestCount;
+  }
+
+  /**
+   * Get requests in the current hour
+   */
+  getCurrentHourCount(): number {
+    const currentHour = Math.floor(Date.now() / (60 * 60 * 1000));
+    return this.requestCountByHour.get(currentHour) || 0;
+  }
+
+  /**
+   * Log metrics summary
+   */
+  private logMetrics(): void {
+    const currentHourCount = this.getCurrentHourCount();
+    logger.info('API Request Metrics', {
+      totalRequests: this.requestCount,
+      requestsThisHour: currentHourCount,
+      estimatedHourlyRate: currentHourCount * 60, // Extrapolate from current count
+    });
+  }
+
+  /**
+   * Get metrics summary
+   */
+  getMetrics(): {
+    totalRequests: number;
+    requestsThisHour: number;
+    estimatedHourlyRate: number;
+  } {
+    const currentHourCount = this.getCurrentHourCount();
+    return {
+      totalRequests: this.requestCount,
+      requestsThisHour: currentHourCount,
+      estimatedHourlyRate: currentHourCount * 60, // Rough estimate
+    };
+  }
 }
 
-const apiTimeout = parseInt(process.env.API_TIMEOUT_MS || '10000', 10);
+// Singleton instance
+const requestMetrics = new RequestMetrics();
 
 /**
- * Create axios instance with default configuration
+ * Get or create axios instance with default configuration
+ * Lazy initialization ensures environment variables are read at runtime
  */
-const metlinkClient: AxiosInstance = axios.create({
-  baseURL: METLINK_API_BASE,
+let metlinkClientInstance: AxiosInstance | null = null;
+
+function getMetlinkClient(): AxiosInstance {
+  if (!metlinkClientInstance) {
+    // Access env at runtime (lazy via Proxy)
+    // Sanitize API key - remove any whitespace, newlines, or invalid characters
+    const apiKey = String(env.METLINK_API_KEY).trim().replace(/[\r\n\t]/g, '');
+    
+    if (!apiKey) {
+      throw new Error('METLINK_API_KEY is empty or invalid');
+    }
+    
+    metlinkClientInstance = axios.create({
+  baseURL: getMetlinkApiBase(),
   headers: {
-    'x-api-key': metlinkApiKey,
+        'x-api-key': apiKey,
     'Content-Type': 'application/json',
   },
-  timeout: apiTimeout,
+  timeout: env.API_TIMEOUT_MS,
 });
+  }
+  return metlinkClientInstance;
+}
 
 /**
  * Get stop predictions for a specific station
  */
 export async function getStopPredictions(stopId: string): Promise<MetlinkApiResponse> {
   try {
+    // Track API request
+    requestMetrics.increment();
+    
     const response = await retry(
-      () => metlinkClient.get<MetlinkApiResponse>(`/stop-predictions?stop_id=${stopId}`),
+      () => getMetlinkClient().get<MetlinkApiResponse>(`/stop-predictions?stop_id=${stopId}`),
       {
         shouldRetry: (error: unknown) => {
           // Retry on network errors or 5xx, but not on 4xx (client errors)
@@ -49,36 +132,96 @@ export async function getStopPredictions(stopId: string): Promise<MetlinkApiResp
       }
     );
 
+    logger.debug(`Fetched stop predictions for ${stopId}`, {
+      requestCount: requestMetrics.getCount(),
+      requestsThisHour: requestMetrics.getCurrentHourCount(),
+      departuresCount: response.data.departures?.length || 0,
+      sampleDeparture: response.data.departures?.[0] ? {
+        service_id: response.data.departures[0].service_id,
+        trip_id: (response.data.departures[0] as unknown as { trip_id?: string }).trip_id,
+        destination: response.data.departures[0].destination?.name,
+        aimed: response.data.departures[0].departure?.aimed,
+        expected: response.data.departures[0].departure?.expected,
+        status: (response.data.departures[0] as unknown as { status?: string }).status,
+      } : null,
+    });
+
     return response.data;
   } catch (error) {
-    logger.error(`Failed to fetch stop predictions for ${stopId}`, error as Error);
+    const errorObj = error as Error;
+    logger.error(`Failed to fetch stop predictions for ${stopId}`, {
+      error: errorObj.message,
+      name: errorObj.name,
+      stack: errorObj.stack,
+      stopId,
+    });
     throw error;
   }
 }
 
 /**
- * Get Wairarapa line departures for a specific station
+ * Get request metrics for monitoring
+ */
+export function getRequestMetrics() {
+  return requestMetrics.getMetrics();
+}
+
+/**
+ * Get departures for a specific station and service line
+ * Handles normalized station IDs by trying platform variants if needed
  */
 export async function getWairarapaDepartures(
   stopId: string,
   serviceId: string = SERVICE_IDS.WAIRARAPA_LINE
 ): Promise<Departure[]> {
   try {
-    const data = await getStopPredictions(stopId);
-    const departures = data.departures || [];
+    // Get platform variants for the station ID
+    const platformVariants = getStationPlatformVariants(stopId);
+    let allDepartures: Departure[] = [];
 
-    const filtered = departures.filter(
+    // Try each platform variant and collect all departures
+    for (const platformId of platformVariants) {
+      try {
+        const data = await getStopPredictions(platformId);
+    const departures = data.departures || [];
+        allDepartures = allDepartures.concat(departures);
+      } catch (error) {
+        // If a platform variant fails, continue with others
+        logger.debug(`Failed to fetch predictions for platform ${platformId}, trying next variant`);
+      }
+    }
+
+    // Filter by service ID and remove duplicates (by service_id, destination, and departure time)
+    const filtered = allDepartures.filter(
       departure => departure.service_id === serviceId
     );
 
-    logger.debug(`Fetched ${filtered.length} WRL departures for ${stopId}`, {
-      total: departures.length,
+    // Remove duplicates based on service_id, destination, and departure time
+    const uniqueDepartures = filtered.filter((departure, index, self) =>
+      index === self.findIndex(d => 
+        d.service_id === departure.service_id &&
+        d.destination.stop_id === departure.destination.stop_id &&
+        d.departure?.aimed === departure.departure?.aimed
+      )
+    );
+
+    logger.debug(`Fetched ${uniqueDepartures.length} departures for ${stopId} (service: ${serviceId})`, {
+      total: allDepartures.length,
       filtered: filtered.length,
+      unique: uniqueDepartures.length,
+      platformsTried: platformVariants.length,
+      sampleDepartures: uniqueDepartures.slice(0, 3).map(dep => ({
+        trip_id: (dep as unknown as { trip_id?: string }).trip_id,
+        destination: dep.destination?.name,
+        aimed: dep.departure?.aimed,
+        expected: dep.departure?.expected,
+        status: (dep as unknown as { status?: string }).status,
+      })),
     });
 
-    return filtered;
+    return uniqueDepartures;
   } catch (error) {
-    logger.error(`Failed to fetch Wairarapa departures for ${stopId}`, error as Error);
+    logger.error(`Failed to fetch departures for ${stopId}`, error as Error);
     throw error;
   }
 }
@@ -98,8 +241,17 @@ export async function getMultipleStationDepartures(
         station: stopId,
       }));
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorDetails = error instanceof Error ? {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      } : { error: String(error) };
+      
       logger.warn(`Failed to fetch departures for station ${stopId}`, {
-        error: error instanceof Error ? error.message : String(error),
+        ...errorDetails,
+        station: stopId,
+        serviceId,
       });
       return []; // Return empty array on error for this station
     }

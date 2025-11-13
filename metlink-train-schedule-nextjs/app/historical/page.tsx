@@ -1,0 +1,54 @@
+/**
+ * Historical Data Dashboard
+ * Displays historical departure data with filtering and visualization
+ */
+
+import { HistoricalDashboard } from '@/components/HistoricalDashboard';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+
+export default function HistoricalPage() {
+  return (
+    <div className="min-h-screen bg-white dark:bg-black">
+      <main id="main-content" role="main">
+        {/* Header Section */}
+        <div className="border-b-2 border-black dark:border-white bg-white dark:bg-black">
+          <div className="max-w-7xl mx-auto px-4 sm:px-8 py-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-3xl font-bold uppercase text-black dark:text-white mb-2">
+                  Historical Data Dashboard
+                </h1>
+                <p className="text-black/80 dark:text-white/80">
+                  View and analyze historical train departure data
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  asChild
+                  variant="outline"
+                  className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors font-semibold uppercase focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white"
+                >
+                  <Link href="/">Back to Schedule</Link>
+                </Button>
+                <Button
+                  asChild
+                  variant="outline"
+                  className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors font-semibold uppercase focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white"
+                >
+                  <Link href="/analytics">Analytics</Link>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Content Section */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 py-6">
+          <HistoricalDashboard />
+        </div>
+      </main>
+    </div>
+  );
+}
+
