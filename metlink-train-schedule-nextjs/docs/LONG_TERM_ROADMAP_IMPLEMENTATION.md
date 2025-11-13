@@ -39,10 +39,10 @@ Implemented on: Feature branch `feature/long-term-roadmap`
   - `CacheEntry` - Database-backed cache
   - `PerformanceMetric` - API performance metrics
   - `ApiRequestMetric` - API request metrics
-- Refactored `lib/server/cache.ts` to use database with in-memory fallback
-- Updated environment configuration to include `DATABASE_URL`
-- Created `lib/server/db.ts` for database client management
-- Added database migration documentation
+- Refactored `lib/server/cache.ts` to use Supabase with in-memory fallback
+- Updated environment configuration to include Supabase variables
+- Created `lib/server/supabaseAdmin.ts` for Supabase client management
+- Added Supabase setup documentation
 
 **Key Features:**
 - Hybrid cache system (database-first with in-memory fallback)
@@ -96,8 +96,8 @@ Implemented on: Feature branch `feature/long-term-roadmap`
 ## New Files Created
 
 ### Database & Schema
-- `prisma/schema.prisma` - Database schema definition
-- `lib/server/db.ts` - Database client singleton
+- `supabase/migrations/001_initial_schema.sql` - Database schema definition
+- `lib/server/supabaseAdmin.ts` - Supabase admin client
 
 ### Historical Data
 - `lib/server/historicalService.ts` - Historical data service
@@ -125,8 +125,8 @@ Implemented on: Feature branch `feature/long-term-roadmap`
 
 ## Modified Files
 
-- `lib/server/cache.ts` - Refactored to use database with fallback
-- `lib/config/env.ts` - Added `DATABASE_URL` configuration
+- `lib/server/cache.ts` - Refactored to use Supabase with fallback
+- `lib/config/env.ts` - Added Supabase configuration
 - `app/api/wairarapa-departures/route.ts` - Updated to forward to v1 endpoint
 - `app/api/wairarapa-departures/route.ts` - Added performance monitoring
 - `next.config.ts` - Enabled instrumentation hook
@@ -142,8 +142,10 @@ Implemented on: Feature branch `feature/long-term-roadmap`
 
 ## Environment Variables
 
-New environment variable:
-- `DATABASE_URL` - PostgreSQL connection string (optional, falls back to in-memory cache)
+New environment variables:
+- `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL (required)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anonymous key (required)
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (required, server-only)
 
 ## Setup Instructions
 
@@ -152,16 +154,19 @@ New environment variable:
    npm install
    ```
 
-2. **Set Up Database** (Optional)
+2. **Set Up Supabase** (Required)
    ```bash
-   # Set DATABASE_URL in .env.local
-   DATABASE_URL="postgresql://user:password@localhost:5432/metlink_train_schedule"
+   # Create Supabase project at supabase.com
+   # Set environment variables in .env.local:
+   NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
    
-   # Run migrations
-   npm run db:migrate
+   # Run migrations (via Supabase dashboard SQL editor or CLI)
+   # See supabase/migrations/001_initial_schema.sql
    
-   # Generate Prisma Client
-   npm run db:generate
+   # Generate TypeScript types
+   supabase gen types typescript --linked > supabase/types.ts
    ```
 
 3. **Run Historical Data Ingestion** (Optional)
@@ -171,8 +176,8 @@ New environment variable:
 
 ## Next Steps
 
-1. **Set up production database** - Configure `DATABASE_URL` in production environment
-2. **Run migrations** - Execute `npm run db:migrate:deploy` in production
+1. **Set up production Supabase** - Configure Supabase environment variables in production
+2. **Run migrations** - Apply migrations to production Supabase project
 3. **Set up cron job** - Configure scheduled historical data ingestion
 4. **Monitor performance** - Review performance metrics via `/api/analytics/performance`
 5. **Migrate clients** - Update API clients to use `/api/v1/departures` instead of legacy endpoints

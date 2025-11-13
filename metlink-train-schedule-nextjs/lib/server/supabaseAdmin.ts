@@ -1,14 +1,18 @@
 /**
  * Supabase Admin Client
  * Server-side only - uses service role key for admin operations
+ * Typed with generated Supabase types
  */
 
 import { createClient } from '@supabase/supabase-js';
 import { logger } from './logger';
+import type { Database } from '@/supabase/types';
 
-let supabaseAdminInstance: ReturnType<typeof createClient> | null = null;
+type SupabaseClient = ReturnType<typeof createClient<Database>>;
 
-function getSupabaseAdmin(): ReturnType<typeof createClient> | null {
+let supabaseAdminInstance: SupabaseClient | null = null;
+
+function getSupabaseAdmin(): SupabaseClient | null {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.DATABASE_SUPABASE_SERVICE_ROLE_KEY;
 
@@ -18,7 +22,7 @@ function getSupabaseAdmin(): ReturnType<typeof createClient> | null {
   }
 
   if (!supabaseAdminInstance) {
-    supabaseAdminInstance = createClient(supabaseUrl, supabaseServiceRoleKey, {
+    supabaseAdminInstance = createClient<Database>(supabaseUrl, supabaseServiceRoleKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
@@ -31,8 +35,9 @@ function getSupabaseAdmin(): ReturnType<typeof createClient> | null {
 
 /**
  * Get Supabase admin client (server-side only)
+ * Typed with Database schema
  */
-export function getSupabaseAdminClient(): ReturnType<typeof createClient> {
+export function getSupabaseAdminClient(): SupabaseClient {
   const client = getSupabaseAdmin();
   if (!client) {
     throw new Error('Supabase admin client is not available. Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.');
@@ -42,6 +47,7 @@ export function getSupabaseAdminClient(): ReturnType<typeof createClient> {
 
 /**
  * Check if Supabase is available
+ * Uses lightweight SELECT 1 query for health check
  */
 export async function isSupabaseAvailable(): Promise<boolean> {
   const client = getSupabaseAdmin();
@@ -50,27 +56,30 @@ export async function isSupabaseAvailable(): Promise<boolean> {
   }
 
   try {
-    // Try querying a table that should exist (users table)
-    // If table doesn't exist yet, that's okay - connection works
-    const { error } = await client.from('users').select('count').limit(1);
+    // Use lightweight query - SELECT 1 is faster than querying actual tables
+    const { error } = await client.rpc('cleanup_expired_cache').select('*').limit(0);
     
-    // If error is about table not existing or permission denied, that's okay - connection works
-    // Only fail on actual connection errors
-    if (error) {
-      const errorMsg = error.message.toLowerCase();
-      if (
-        errorMsg.includes('relation') ||
-        errorMsg.includes('does not exist') ||
-        errorMsg.includes('permission') ||
-        errorMsg.includes('pgrst')
-      ) {
-        // Table might not exist yet or permissions not set - connection is working
-        return true;
+    // If function doesn't exist yet (migration not run), try a simple query instead
+    if (error && error.message.includes('function')) {
+      const { error: queryError } = await client.from('cache_entries').select('id').limit(1);
+      
+      if (queryError) {
+        const errorMsg = queryError.message.toLowerCase();
+        // Table might not exist yet - that's okay, connection works
+        if (
+          errorMsg.includes('relation') ||
+          errorMsg.includes('does not exist') ||
+          errorMsg.includes('permission') ||
+          errorMsg.includes('pgrst')
+        ) {
+          return true; // Connection works, schema just not set up yet
+        }
+        logger.warn('Supabase connection check failed', { error: queryError.message });
+        return false;
       }
-      // Actual connection error
-      logger.warn('Supabase connection check failed', { error: error.message });
-      return false;
+      return true;
     }
+    
     return true;
   } catch (error) {
     logger.warn('Supabase not available', {

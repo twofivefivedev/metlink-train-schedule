@@ -186,10 +186,11 @@ You can integrate with external analytics services by:
 
 ### Metrics Not Appearing
 
-1. Check database connection
-2. Verify `DATABASE_URL` is set
+1. Check Supabase connection
+2. Verify Supabase environment variables are set (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`)
 3. Check application logs for errors
-4. Ensure Prisma Client is generated
+4. Verify Supabase migrations have been applied
+5. Check Supabase dashboard for connection status
 
 ### High Response Times
 
@@ -204,3 +205,32 @@ You can integrate with external analytics services by:
 2. Check database storage capacity
 3. Review data retention policies
 4. Check for database connection issues
+
+### Supabase Health Monitoring
+
+Monitor Supabase health:
+
+1. **Connection Status**
+   - Check `isSupabaseAvailable()` function logs
+   - Monitor Supabase dashboard for connection errors
+   - Review application logs for Supabase connection warnings
+
+2. **Database Performance**
+   - Monitor query performance in Supabase dashboard
+   - Check for slow queries (>100ms)
+   - Review index usage statistics
+
+3. **Storage & Usage**
+   - Monitor database size in Supabase dashboard
+   - Check API usage limits
+   - Review connection pool usage
+
+4. **Error Rates**
+   - Monitor Supabase error logs
+   - Track failed repository operations
+   - Review RLS policy violations
+
+5. **Cache Performance**
+   - Monitor cache hit/miss rates via `api_request_metrics`
+   - Check cache cleanup function execution
+   - Review cache entry expiration patterns

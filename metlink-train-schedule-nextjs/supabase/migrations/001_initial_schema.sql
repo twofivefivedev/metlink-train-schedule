@@ -118,12 +118,16 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Triggers to automatically update updatedAt
+-- Drop existing triggers first to make migration idempotent
+DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_user_preferences_updated_at ON user_preferences;
 CREATE TRIGGER update_user_preferences_updated_at BEFORE UPDATE ON user_preferences
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_schedule_configs_updated_at ON schedule_configs;
 CREATE TRIGGER update_schedule_configs_updated_at BEFORE UPDATE ON schedule_configs
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

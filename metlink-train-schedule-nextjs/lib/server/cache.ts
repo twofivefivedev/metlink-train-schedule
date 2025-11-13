@@ -6,7 +6,8 @@
 
 import { logger } from './logger';
 import { CACHE_DURATION } from '@/lib/constants';
-import { getSupabaseAdminClient, isSupabaseAvailable } from './supabaseAdmin';
+import { isSupabaseAvailable } from './supabaseAdmin';
+import { getCacheRepository } from './db';
 import type { DeparturesResponse, CacheInfo } from '@/types';
 
 interface CacheEntry {
@@ -55,16 +56,8 @@ class Cache {
     if (!this.useDatabase) return;
     
     try {
-      const now = new Date().toISOString();
-      const supabase = getSupabaseAdminClient();
-      const { error } = await supabase
-        .from('cache_entries')
-        .delete()
-        .lt('expiresAt', now);
-      
-      if (error) {
-        throw error;
-      }
+      const cacheRepo = getCacheRepository();
+      await cacheRepo.cleanupExpired();
     } catch (error) {
       logger.warn('Failed to clean expired cache entries', {
         error: error instanceof Error ? error.message : String(error),
@@ -75,17 +68,9 @@ class Cache {
   async isValid(key: string = 'default'): Promise<boolean> {
     if (this.useDatabase) {
       try {
-        const supabase = getSupabaseAdminClient();
-        const { data: entry, error } = await supabase
-          .from('cache_entries')
-          .select('expiresAt')
-          .eq('key', key)
-          .single();
-        
-        if (error || !entry) {
-          return false;
-        }
-        return new Date(entry.expiresAt) > new Date();
+        const cacheRepo = getCacheRepository();
+        const data = await cacheRepo.get(key);
+        return data !== null;
       } catch (error) {
         logger.warn('Supabase cache check failed, falling back to in-memory', {
           error: error instanceof Error ? error.message : String(error),
@@ -110,17 +95,8 @@ class Cache {
 
     if (this.useDatabase) {
       try {
-        const supabase = getSupabaseAdminClient();
-        const { data: entry, error } = await supabase
-          .from('cache_entries')
-          .select('data, expiresAt')
-          .eq('key', key)
-          .single();
-        
-        if (!error && entry && new Date(entry.expiresAt) > new Date()) {
-          return entry.data as DeparturesResponse;
-        }
-        return null;
+        const cacheRepo = getCacheRepository();
+        return await cacheRepo.get(key);
       } catch (error) {
         logger.warn('Supabase cache get failed, falling back to in-memory', {
           error: error instanceof Error ? error.message : String(error),
@@ -137,21 +113,8 @@ class Cache {
 
     if (this.useDatabase) {
       try {
-        const supabase = getSupabaseAdminClient();
-        const { error } = await supabase
-          .from('cache_entries')
-          .upsert({
-            key,
-            data: data as unknown as Record<string, unknown>,
-            timestamp: new Date().toISOString(),
-            expiresAt: expiresAt.toISOString(),
-          }, {
-            onConflict: 'key',
-          });
-        
-        if (error) {
-          throw error;
-        }
+        const cacheRepo = getCacheRepository();
+        await cacheRepo.set(key, data, expiresAt);
         
         logger.debug('Cache updated (Supabase)', {
           key,
@@ -181,19 +144,11 @@ class Cache {
   async clear(key?: string): Promise<void> {
     if (this.useDatabase) {
       try {
-        const supabase = getSupabaseAdminClient();
+        const cacheRepo = getCacheRepository();
         if (key) {
-          const { error } = await supabase
-            .from('cache_entries')
-            .delete()
-            .eq('key', key);
-          if (error) throw error;
+          await cacheRepo.delete(key);
         } else {
-          const { error } = await supabase
-            .from('cache_entries')
-            .delete()
-            .neq('key', ''); // Delete all
-          if (error) throw error;
+          await cacheRepo.deleteAll();
         }
         logger.debug('Cache cleared (Supabase)', { key: key || 'all' });
         return;
@@ -217,17 +172,8 @@ class Cache {
   async getAge(key: string = 'default'): Promise<number | null> {
     if (this.useDatabase) {
       try {
-        const supabase = getSupabaseAdminClient();
-        const { data: entry, error } = await supabase
-          .from('cache_entries')
-          .select('timestamp')
-          .eq('key', key)
-          .single();
-        
-        if (error || !entry) {
-          return null;
-        }
-        return Math.round((Date.now() - new Date(entry.timestamp).getTime()) / 1000);
+        const cacheRepo = getCacheRepository();
+        return await cacheRepo.getAge(key);
       } catch (error) {
         logger.warn('Supabase cache age check failed, falling back to in-memory', {
           error: error instanceof Error ? error.message : String(error),

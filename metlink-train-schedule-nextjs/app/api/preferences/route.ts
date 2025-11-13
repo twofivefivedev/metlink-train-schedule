@@ -31,7 +31,10 @@ export async function GET(request: NextRequest) {
     const preferences = await loadUserPreferencesFromDb(userId);
     
     if (preferences) {
-      return NextResponse.json(success(preferences));
+      return NextResponse.json(success(preferences, {
+        syncedAt: new Date().toISOString(),
+        source: 'supabase',
+      }));
     }
 
     // Fallback: return empty preferences if database unavailable
@@ -45,6 +48,9 @@ export async function GET(request: NextRequest) {
           notifyOnApproaching: false,
           approachingMinutes: 5,
         },
+      }, {
+        syncedAt: new Date().toISOString(),
+        source: 'fallback',
       })
     );
   } catch (error) {
@@ -77,19 +83,28 @@ export async function POST(request: NextRequest) {
       // Save schedule config
       const saved = await saveScheduleConfigToDb(userId, body.config);
       if (saved) {
-        return NextResponse.json(success({ config: saved }));
+        return NextResponse.json(success({ config: saved }, {
+          syncedAt: new Date().toISOString(),
+          source: 'supabase',
+        }));
       }
     } else if (body.configId && body.action === 'delete') {
       // Remove schedule config
       const removed = await removeScheduleConfigFromDb(userId, body.configId);
       if (removed) {
-        return NextResponse.json(success({ removed: true }));
+        return NextResponse.json(success({ removed: true }, {
+          syncedAt: new Date().toISOString(),
+          source: 'supabase',
+        }));
       }
     } else if (body.alerts) {
       // Update alert preferences
       const updated = await updateAlertPreferencesInDb(userId, body.alerts);
       if (updated) {
-        return NextResponse.json(success({ alerts: updated }));
+        return NextResponse.json(success({ alerts: updated }, {
+          syncedAt: new Date().toISOString(),
+          source: 'supabase',
+        }));
       }
     }
 
@@ -97,6 +112,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       success({
         message: 'Preferences saved (fallback to localStorage)',
+      }, {
+        syncedAt: new Date().toISOString(),
+        source: 'fallback',
       })
     );
   } catch (error) {

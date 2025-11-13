@@ -9,6 +9,8 @@ import type { SortOption, SortDirection } from './sortUtils';
 
 const USER_ID_KEY = 'metlink-user-id';
 const USE_DB_KEY = 'metlink-use-db';
+const LAST_SYNC_KEY = 'metlink-last-sync';
+const SYNC_DEBOUNCE_MS = 1000; // Debounce saves by 1 second
 
 export interface ScheduleConfig {
   id: string;
@@ -177,7 +179,16 @@ async function loadPreferencesFromDb(userId: string): Promise<UserPreferences> {
           alerts: result.data.alerts || DEFAULT_PREFERENCES.alerts,
         };
 
-        // Also save to localStorage for offline access
+        // Store sync timestamp if available
+        if (result.meta?.syncedAt && typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(LAST_SYNC_KEY, result.meta.syncedAt);
+          } catch {
+            // Ignore localStorage errors
+          }
+        }
+
+        // Also save to localStorage for offline access (Supabase is source of truth)
         savePreferencesToStorage(preferences);
         
         return preferences;
@@ -277,31 +288,65 @@ function savePreferencesToStorage(preferences: UserPreferences): void {
   }
 }
 
+// Debounce timer for database saves
+let saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingSave: { userId: string; preferences: UserPreferences } | null = null;
+
 /**
- * Save preferences to database
+ * Save preferences to database with debouncing
  */
 async function savePreferencesToDb(userId: string, preferences: UserPreferences): Promise<void> {
-  try {
-    // Save alert preferences
-    if (preferences.alerts) {
-      await fetch('/api/preferences', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': userId,
-        },
-        body: JSON.stringify({
-          userId,
-          alerts: preferences.alerts,
-        }),
-      });
-    }
+  // Store pending save
+  pendingSave = { userId, preferences };
 
-    markDatabaseAvailable();
-  } catch (error) {
-    console.error('Failed to save preferences to database:', error);
-    markDatabaseUnavailable();
+  // Clear existing timer
+  if (saveDebounceTimer) {
+    clearTimeout(saveDebounceTimer);
   }
+
+  // Set new debounced save
+  saveDebounceTimer = setTimeout(async () => {
+    if (!pendingSave) return;
+
+    const { userId: saveUserId, preferences: savePreferences } = pendingSave;
+    pendingSave = null;
+
+    try {
+      // Save alert preferences
+      if (savePreferences.alerts) {
+        const response = await fetch('/api/preferences', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-Id': saveUserId,
+          },
+          body: JSON.stringify({
+            userId: saveUserId,
+            alerts: savePreferences.alerts,
+          }),
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.meta?.syncedAt) {
+            // Store sync timestamp
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.setItem(LAST_SYNC_KEY, result.meta.syncedAt);
+              } catch {
+                // Ignore localStorage errors
+              }
+            }
+          }
+        }
+      }
+
+      markDatabaseAvailable();
+    } catch (error) {
+      console.error('Failed to save preferences to database:', error);
+      markDatabaseUnavailable();
+    }
+  }, SYNC_DEBOUNCE_MS);
 }
 
 /**
@@ -399,7 +444,7 @@ export function addScheduleConfig(config: Omit<ScheduleConfig, 'id' | 'createdAt
               const index = preferences.configs.findIndex(c => c.id === newConfig.id);
               if (index !== -1) {
                 preferences.configs[index] = dbConfig;
-                savePreferences(preferences);
+  savePreferences(preferences);
               }
               markDatabaseAvailable();
             }

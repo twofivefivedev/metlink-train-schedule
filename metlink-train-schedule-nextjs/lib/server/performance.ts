@@ -4,7 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdminClient, isSupabaseAvailable } from './supabaseAdmin';
+import { isSupabaseAvailable } from './supabaseAdmin';
+import { getPerformanceRepository } from './db';
 import { logger } from './logger';
 
 interface PerformanceContext {
@@ -53,22 +54,16 @@ export async function recordPerformanceMetric(
   // Store in Supabase if available
   if (await isSupabaseAvailable()) {
     try {
-      const supabase = getSupabaseAdminClient();
-      const { error } = await supabase
-        .from('performance_metrics')
-        .insert({
-          endpoint: context.endpoint,
-          method: context.method,
-          statusCode,
-          responseTime,
-          requestSize,
-          responseSize,
-          errorMessage,
-        });
-      
-      if (error) {
-        throw error;
-      }
+      const perfRepo = getPerformanceRepository();
+      await perfRepo.insertPerformanceMetric({
+        endpoint: context.endpoint,
+        method: context.method,
+        statusCode,
+        responseTime,
+        requestSize,
+        responseSize,
+        errorMessage,
+      });
     } catch (error) {
       logger.warn('Failed to store performance metric', {
         error: error instanceof Error ? error.message : String(error),
@@ -101,21 +96,15 @@ export async function recordApiRequestMetric(
   // Store in Supabase if available
   if (await isSupabaseAvailable()) {
     try {
-      const supabase = getSupabaseAdminClient();
-      const { error } = await supabase
-        .from('api_request_metrics')
-        .insert({
-          endpoint,
-          method,
-          statusCode,
-          responseTime,
-          cacheHit,
-          errorMessage,
-        });
-      
-      if (error) {
-        throw error;
-      }
+      const perfRepo = getPerformanceRepository();
+      await perfRepo.insertApiRequestMetric({
+        endpoint,
+        method,
+        statusCode,
+        responseTime,
+        cacheHit,
+        errorMessage,
+      });
     } catch (error) {
       logger.warn('Failed to store API request metric', {
         error: error instanceof Error ? error.message : String(error),
@@ -203,66 +192,12 @@ export async function getPerformanceStats(
   }
 
   try {
-    const supabase = getSupabaseAdminClient();
-    let query = supabase
-      .from('performance_metrics')
-      .select('*')
-      .order('responseTime', { ascending: true });
-
-    if (endpoint) {
-      query = query.eq('endpoint', endpoint);
-    }
-    if (startDate) {
-      query = query.gte('createdAt', startDate.toISOString());
-    }
-    if (endDate) {
-      query = query.lte('createdAt', endDate.toISOString());
-    }
-
-    const { data: metrics, error } = await query;
-
-    if (error) {
-      throw error;
-    }
-
-    if (!metrics || metrics.length === 0) {
-      return {
-        total: 0,
-        averageResponseTime: 0,
-        p50: 0,
-        p95: 0,
-        p99: 0,
-        errorRate: 0,
-        statusCodes: {},
-      };
-    }
-
-    const total = metrics.length;
-    const totalResponseTime = metrics.reduce((sum, m) => sum + m.responseTime, 0);
-    const averageResponseTime = totalResponseTime / total;
-
-    const responseTimes = metrics.map((m) => m.responseTime).sort((a, b) => a - b);
-    const p50 = responseTimes[Math.floor(responseTimes.length * 0.5)] || 0;
-    const p95 = responseTimes[Math.floor(responseTimes.length * 0.95)] || 0;
-    const p99 = responseTimes[Math.floor(responseTimes.length * 0.99)] || 0;
-
-    const errors = metrics.filter((m) => m.statusCode >= 400).length;
-    const errorRate = (errors / total) * 100;
-
-    const statusCodes: Record<number, number> = {};
-    metrics.forEach((m) => {
-      statusCodes[m.statusCode] = (statusCodes[m.statusCode] || 0) + 1;
+    const perfRepo = getPerformanceRepository();
+    return await perfRepo.getPerformanceStats({
+      endpoint,
+      startDate,
+      endDate,
     });
-
-    return {
-      total,
-      averageResponseTime: Math.round(averageResponseTime),
-      p50,
-      p95,
-      p99,
-      errorRate: Math.round(errorRate * 10) / 10,
-      statusCodes,
-    };
   } catch (error) {
     logger.error('Failed to get performance stats', {
       error: error instanceof Error ? error.message : String(error),

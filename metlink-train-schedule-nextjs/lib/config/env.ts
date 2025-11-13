@@ -25,9 +25,6 @@ const envSchema = z.object({
   // Cache Configuration
   CACHE_DURATION_MS: z.string().regex(/^\d+$/).transform(Number).optional(),
   
-  // Database Configuration
-  DATABASE_URL: z.string().url().optional(),
-  
   // Supabase Configuration
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().optional(),
@@ -57,7 +54,6 @@ function getEnv() {
       NEXT_PUBLIC_USE_MOCK_DATA: process.env.NEXT_PUBLIC_USE_MOCK_DATA || 'false',
       API_TIMEOUT_MS: process.env.API_TIMEOUT_MS || '10000',
       CACHE_DURATION_MS: process.env.CACHE_DURATION_MS,
-      DATABASE_URL: process.env.DATABASE_URL,
       NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
       NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       SUPABASE_URL: process.env.SUPABASE_URL,
@@ -91,7 +87,6 @@ function getEnv() {
       METLINK_API_BASE: 'https://api.opendata.metlink.org.nz/v1',
       API_TIMEOUT_MS: 10000,
       CACHE_DURATION_MS: undefined,
-      DATABASE_URL: undefined,
       SUPABASE_URL: undefined,
       SUPABASE_SERVICE_ROLE_KEY: undefined,
       LOG_LEVEL: 'INFO' as const,

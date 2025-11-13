@@ -4,48 +4,26 @@ This document describes the database migration from in-memory cache to persisten
 
 ## Overview
 
-The application has been migrated from an in-memory cache to a PostgreSQL database using Prisma ORM. The migration maintains backward compatibility by falling back to in-memory cache when the database is not available.
+The application has been migrated from an in-memory cache to Supabase (PostgreSQL). The migration maintains backward compatibility by falling back to in-memory cache when Supabase is not available.
+
+**Note:** This document is kept for historical reference. For current setup instructions, see [Supabase Setup Guide](./supabase-setup.md).
 
 ## Prerequisites
 
-- PostgreSQL database (local or hosted)
+- Supabase account and project
 - Node.js 18+
-- Prisma CLI (included in dependencies)
+- Supabase CLI (optional, for local development)
 
 ## Setup
 
-### 1. Install Dependencies
+See [Supabase Setup Guide](./supabase-setup.md) for detailed setup instructions.
 
-```bash
-npm install
-```
+### Quick Start
 
-### 2. Configure Database
-
-Set the `DATABASE_URL` environment variable in your `.env.local` file:
-
-```env
-DATABASE_URL="postgresql://user:password@localhost:5432/metlink_train_schedule?schema=public"
-```
-
-For production, use your hosted database URL (e.g., from Vercel Postgres, Supabase, or Railway).
-
-### 3. Run Migrations
-
-```bash
-npx prisma migrate dev
-```
-
-This will:
-- Create the database schema
-- Generate Prisma Client
-- Apply all migrations
-
-### 4. Generate Prisma Client
-
-```bash
-npx prisma generate
-```
+1. Create a Supabase project at [supabase.com](https://supabase.com)
+2. Configure environment variables (see `supabase-setup.md`)
+3. Run migrations from `supabase/migrations/001_initial_schema.sql`
+4. Generate TypeScript types: `supabase gen types typescript --linked`
 
 ## Database Schema
 
@@ -104,11 +82,11 @@ Stores API request metrics.
 ### Automatic Fallback
 
 The application automatically falls back to in-memory cache if:
-- `DATABASE_URL` is not set
-- Database connection fails
-- Database queries fail
+- Supabase environment variables are not set
+- Supabase connection fails
+- Supabase queries fail
 
-This ensures the application continues to work without a database.
+This ensures the application continues to work without Supabase.
 
 ### Cache Migration
 
@@ -122,24 +100,18 @@ Historical data collection starts automatically once the database is available. 
 
 ### Vercel
 
-1. Add `DATABASE_URL` to your Vercel environment variables
-2. Run migrations during build:
-
-```bash
-npx prisma migrate deploy
-```
-
-3. Generate Prisma Client:
-
-```bash
-npx prisma generate
-```
+1. Add Supabase environment variables to your Vercel environment variables:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+2. Ensure migrations are applied to your Supabase project
+3. Deploy as usual
 
 ### Other Platforms
 
-1. Set `DATABASE_URL` environment variable
-2. Run migrations before starting the application
-3. Ensure Prisma Client is generated
+1. Set Supabase environment variables
+2. Ensure migrations are applied to your Supabase project
+3. The application will automatically connect to Supabase
 
 ## Maintenance
 
@@ -173,34 +145,38 @@ WHERE created_at < NOW() - INTERVAL '30 days';
 
 ### Database Connection Issues
 
-If the database is not available, check:
-1. `DATABASE_URL` is set correctly
-2. Database server is running
+If Supabase is not available, check:
+1. Supabase environment variables are set correctly
+2. Supabase project is active
 3. Network connectivity
-4. Database credentials are correct
+4. Supabase credentials are correct
 
 The application will log warnings and fall back to in-memory cache.
 
 ### Migration Errors
 
 If migrations fail:
-1. Check database connection
+1. Check Supabase connection
 2. Verify schema conflicts
-3. Review migration files in `prisma/migrations/`
-4. Reset database if needed: `npx prisma migrate reset` (⚠️ deletes all data)
+3. Review migration files in `supabase/migrations/`
+4. Check Supabase dashboard for error logs
 
-### Prisma Client Issues
+### Type Generation Issues
 
-If Prisma Client is not generated:
+If TypeScript types are not generated:
 ```bash
-npx prisma generate
+supabase gen types typescript --linked
 ```
 
 ## Rollback
 
 To rollback to in-memory cache only:
-1. Remove or unset `DATABASE_URL` environment variable
+1. Remove or unset Supabase environment variables
 2. Restart the application
 
 The application will automatically use in-memory cache.
+
+## Current Status
+
+The application now uses Supabase as the primary database. See [Supabase Setup Guide](./supabase-setup.md) for current setup instructions.
 
