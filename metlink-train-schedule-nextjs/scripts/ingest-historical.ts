@@ -12,7 +12,7 @@
  *   {
  *     "crons": [{
  *       "path": "/api/cron/ingest-historical",
- *       "schedule": "*/5 * * * *"
+ *       "schedule": "every 5 minutes"
  *     }]
  *   }
  */

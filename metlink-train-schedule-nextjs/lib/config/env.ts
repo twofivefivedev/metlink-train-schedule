@@ -28,6 +28,12 @@ const envSchema = z.object({
   // Database Configuration
   DATABASE_URL: z.string().url().optional(),
   
+  // Supabase Configuration
+  NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().optional(),
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+  
   // Logging
   LOG_LEVEL: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
   
@@ -52,6 +58,10 @@ function getEnv() {
       API_TIMEOUT_MS: process.env.API_TIMEOUT_MS || '10000',
       CACHE_DURATION_MS: process.env.CACHE_DURATION_MS,
       DATABASE_URL: process.env.DATABASE_URL,
+      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      SUPABASE_URL: process.env.SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
       LOG_LEVEL: process.env.LOG_LEVEL || 'INFO',
       NODE_ENV: process.env.NODE_ENV || 'development',
     };
@@ -70,6 +80,8 @@ function getEnv() {
     const clientEnv = {
       NEXT_PUBLIC_API_BASE: process.env.NEXT_PUBLIC_API_BASE || '',
       NEXT_PUBLIC_USE_MOCK_DATA: process.env.NEXT_PUBLIC_USE_MOCK_DATA || 'false',
+      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
     };
     
     return {
@@ -80,6 +92,8 @@ function getEnv() {
       API_TIMEOUT_MS: 10000,
       CACHE_DURATION_MS: undefined,
       DATABASE_URL: undefined,
+      SUPABASE_URL: undefined,
+      SUPABASE_SERVICE_ROLE_KEY: undefined,
       LOG_LEVEL: 'INFO' as const,
       NODE_ENV: 'development' as const,
     };

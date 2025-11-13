@@ -12,17 +12,17 @@ export async function register() {
     // Log that instrumentation is running
     console.log('[Instrumentation] Server-side instrumentation initialized');
     
-    // Initialize database connection if available
+    // Initialize Supabase connection if available
     try {
-      const { prisma, isDatabaseAvailable } = await import('./lib/server/db');
-      const available = await isDatabaseAvailable();
+      const { isSupabaseAvailable } = await import('./lib/server/supabaseAdmin');
+      const available = await isSupabaseAvailable();
       if (available) {
-        console.log('[Instrumentation] Database connection available');
+        console.log('[Instrumentation] Supabase connection available');
       } else {
-        console.log('[Instrumentation] Database not available, using in-memory cache');
+        console.log('[Instrumentation] Supabase not available, using in-memory cache');
       }
     } catch (error) {
-      console.warn('[Instrumentation] Failed to initialize database:', error);
+      console.warn('[Instrumentation] Failed to initialize Supabase:', error);
     }
   }
   

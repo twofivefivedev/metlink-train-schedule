@@ -3,7 +3,7 @@
  * Collects and stores departure data for analytics
  */
 
-import { prisma, isDatabaseAvailable } from './db';
+import { getSupabaseAdminClient, isSupabaseAvailable } from './supabaseAdmin';
 import { logger } from './logger';
 import type { Departure } from '@/types';
 
@@ -14,12 +14,13 @@ export async function storeHistoricalDepartures(
   departures: Departure[],
   station?: string
 ): Promise<void> {
-  if (!(await isDatabaseAvailable())) {
-    logger.debug('Database not available, skipping historical data storage');
+  if (!(await isSupabaseAvailable())) {
+    logger.debug('Supabase not available, skipping historical data storage');
     return;
   }
 
   try {
+    const supabase = getSupabaseAdminClient();
     const records = departures.map((departure) => {
       const aimedTime = departure.departure?.aimed
         ? new Date(departure.departure.aimed)
@@ -34,17 +35,23 @@ export async function storeHistoricalDepartures(
         station: station || departure.station || null,
         destination: departure.destination?.name || 'Unknown',
         destinationStopId: departure.destination?.stop_id || '',
-        aimedTime,
-        expectedTime,
+        aimedTime: aimedTime.toISOString(),
+        expectedTime: expectedTime?.toISOString() || null,
         status: (departure as unknown as { status?: string }).status || null,
       };
     });
 
-    // Use createMany for better performance
-    await prisma.historicalDeparture.createMany({
-      data: records,
-      skipDuplicates: true, // Skip if exact duplicate exists
-    });
+    // Insert records (Supabase handles duplicates via unique constraints)
+    const { error } = await supabase
+      .from('historical_departures')
+      .insert(records);
+
+    if (error) {
+      // Ignore duplicate key errors
+      if (!error.message.includes('duplicate') && !error.code?.includes('23505')) {
+        throw error;
+      }
+    }
 
     logger.debug('Stored historical departures', {
       count: records.length,
@@ -82,47 +89,52 @@ export async function getHistoricalDepartures(
   status: string | null;
   createdAt: Date;
 }>> {
-  if (!(await isDatabaseAvailable())) {
-    logger.debug('Database not available, returning empty historical data');
+  if (!(await isSupabaseAvailable())) {
+    logger.debug('Supabase not available, returning empty historical data');
     return [];
   }
 
   try {
-    const where: {
-      serviceId?: string;
-      stopId?: string;
-      station?: string;
-      aimedTime?: { gte?: Date; lte?: Date };
-    } = {};
+    const supabase = getSupabaseAdminClient();
+    let query = supabase
+      .from('historical_departures')
+      .select('*')
+      .order('aimedTime', { ascending: false })
+      .limit(options.limit || 1000);
 
     if (options.serviceId) {
-      where.serviceId = options.serviceId;
+      query = query.eq('serviceId', options.serviceId);
     }
     if (options.stopId) {
-      where.stopId = options.stopId;
+      query = query.eq('stopId', options.stopId);
     }
     if (options.station) {
-      where.station = options.station;
+      query = query.eq('station', options.station);
     }
-    if (options.startDate || options.endDate) {
-      where.aimedTime = {};
-      if (options.startDate) {
-        where.aimedTime.gte = options.startDate;
-      }
-      if (options.endDate) {
-        where.aimedTime.lte = options.endDate;
-      }
+    if (options.startDate) {
+      query = query.gte('aimedTime', options.startDate.toISOString());
+    }
+    if (options.endDate) {
+      query = query.lte('aimedTime', options.endDate.toISOString());
     }
 
-    const records = await prisma.historicalDeparture.findMany({
-      where,
-      orderBy: {
-        aimedTime: 'desc',
-      },
-      take: options.limit || 1000,
-    });
+    const { data: records, error } = await query;
 
-    return records;
+    if (error) {
+      throw error;
+    }
+
+    return (records || []).map((record) => ({
+      id: record.id,
+      serviceId: record.serviceId,
+      stopId: record.stopId,
+      station: record.station,
+      destination: record.destination,
+      aimedTime: new Date(record.aimedTime),
+      expectedTime: record.expectedTime ? new Date(record.expectedTime) : null,
+      status: record.status,
+      createdAt: new Date(record.createdAt),
+    }));
   } catch (error) {
     logger.error('Failed to get historical departures', {
       error: error instanceof Error ? error.message : String(error),
@@ -147,7 +159,7 @@ export async function calculateOnTimePerformance(
   averageDelay: number;
   onTimePercentage: number;
 }> {
-  if (!(await isDatabaseAvailable())) {
+  if (!(await isSupabaseAvailable())) {
     return {
       total: 0,
       onTime: 0,
@@ -159,32 +171,34 @@ export async function calculateOnTimePerformance(
   }
 
   try {
-    const records = await prisma.historicalDeparture.findMany({
-      where: {
-        serviceId,
-        aimedTime: {
-          gte: startDate,
-          lte: endDate,
-        },
-        expectedTime: {
-          not: null,
-        },
-      },
-    });
+    const supabase = getSupabaseAdminClient();
+    const { data: records, error } = await supabase
+      .from('historical_departures')
+      .select('aimedTime, expectedTime')
+      .eq('serviceId', serviceId)
+      .gte('aimedTime', startDate.toISOString())
+      .lte('aimedTime', endDate.toISOString())
+      .not('expectedTime', 'is', null);
 
-    const total = records.length;
+    if (error) {
+      throw error;
+    }
+
+    const total = records?.length || 0;
     let onTime = 0;
     let delayed = 0;
     let cancelled = 0;
     let totalDelay = 0;
 
-    records.forEach((record) => {
+    (records || []).forEach((record) => {
       if (!record.expectedTime) {
         cancelled++;
         return;
       }
 
-      const delayMs = record.expectedTime.getTime() - record.aimedTime.getTime();
+      const aimedTime = new Date(record.aimedTime);
+      const expectedTime = new Date(record.expectedTime);
+      const delayMs = expectedTime.getTime() - aimedTime.getTime();
       const delayMinutes = delayMs / (1000 * 60);
 
       if (delayMinutes <= 2) {

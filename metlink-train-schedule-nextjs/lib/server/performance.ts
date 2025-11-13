@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma, isDatabaseAvailable } from './db';
+import { getSupabaseAdminClient, isSupabaseAvailable } from './supabaseAdmin';
 import { logger } from './logger';
 
 interface PerformanceContext {
@@ -50,11 +50,13 @@ export async function recordPerformanceMetric(
     errorMessage,
   });
 
-  // Store in database if available
-  if (await isDatabaseAvailable()) {
+  // Store in Supabase if available
+  if (await isSupabaseAvailable()) {
     try {
-      await prisma.performanceMetric.create({
-        data: {
+      const supabase = getSupabaseAdminClient();
+      const { error } = await supabase
+        .from('performance_metrics')
+        .insert({
           endpoint: context.endpoint,
           method: context.method,
           statusCode,
@@ -62,8 +64,11 @@ export async function recordPerformanceMetric(
           requestSize,
           responseSize,
           errorMessage,
-        },
-      });
+        });
+      
+      if (error) {
+        throw error;
+      }
     } catch (error) {
       logger.warn('Failed to store performance metric', {
         error: error instanceof Error ? error.message : String(error),
@@ -93,19 +98,24 @@ export async function recordApiRequestMetric(
     errorMessage,
   });
 
-  // Store in database if available
-  if (await isDatabaseAvailable()) {
+  // Store in Supabase if available
+  if (await isSupabaseAvailable()) {
     try {
-      await prisma.apiRequestMetric.create({
-        data: {
+      const supabase = getSupabaseAdminClient();
+      const { error } = await supabase
+        .from('api_request_metrics')
+        .insert({
           endpoint,
           method,
           statusCode,
           responseTime,
           cacheHit,
           errorMessage,
-        },
-      });
+        });
+      
+      if (error) {
+        throw error;
+      }
     } catch (error) {
       logger.warn('Failed to store API request metric', {
         error: error instanceof Error ? error.message : String(error),
@@ -180,7 +190,7 @@ export async function getPerformanceStats(
   errorRate: number;
   statusCodes: Record<number, number>;
 }> {
-  if (!(await isDatabaseAvailable())) {
+  if (!(await isSupabaseAvailable())) {
     return {
       total: 0,
       averageResponseTime: 0,
@@ -193,32 +203,29 @@ export async function getPerformanceStats(
   }
 
   try {
-    const where: {
-      endpoint?: string;
-      createdAt?: { gte?: Date; lte?: Date };
-    } = {};
+    const supabase = getSupabaseAdminClient();
+    let query = supabase
+      .from('performance_metrics')
+      .select('*')
+      .order('responseTime', { ascending: true });
 
     if (endpoint) {
-      where.endpoint = endpoint;
+      query = query.eq('endpoint', endpoint);
     }
-    if (startDate || endDate) {
-      where.createdAt = {};
-      if (startDate) {
-        where.createdAt.gte = startDate;
-      }
-      if (endDate) {
-        where.createdAt.lte = endDate;
-      }
+    if (startDate) {
+      query = query.gte('createdAt', startDate.toISOString());
+    }
+    if (endDate) {
+      query = query.lte('createdAt', endDate.toISOString());
     }
 
-    const metrics = await prisma.performanceMetric.findMany({
-      where,
-      orderBy: {
-        responseTime: 'asc',
-      },
-    });
+    const { data: metrics, error } = await query;
 
-    if (metrics.length === 0) {
+    if (error) {
+      throw error;
+    }
+
+    if (!metrics || metrics.length === 0) {
       return {
         total: 0,
         averageResponseTime: 0,

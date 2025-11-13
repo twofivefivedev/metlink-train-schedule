@@ -44,6 +44,9 @@ npm install
 3. Create a `.env.local` file in the root directory:
 ```env
 METLINK_API_KEY=your_api_key_here
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 ```
 
 4. Run the development server:
@@ -58,6 +61,9 @@ npm run dev
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
 | `METLINK_API_KEY` | Metlink Open Data API key | Yes | - |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | Yes | - |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key (public) | Yes | - |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-only) | Yes | - |
 | `API_TIMEOUT_MS` | API request timeout in milliseconds | No | 10000 |
 | `CACHE_DURATION_MS` | Cache duration in milliseconds | No | 60000 |
 | `LOG_LEVEL` | Logging level (ERROR, WARN, INFO, DEBUG) | No | INFO |

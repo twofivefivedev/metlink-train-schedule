@@ -6,7 +6,7 @@
 
 import { logger } from './logger';
 import { CACHE_DURATION } from '@/lib/constants';
-import { prisma, isDatabaseAvailable } from './db';
+import { getSupabaseAdminClient, isSupabaseAvailable } from './supabaseAdmin';
 import type { DeparturesResponse, CacheInfo } from '@/types';
 
 interface CacheEntry {
@@ -35,16 +35,16 @@ class Cache {
 
   private async initDatabase(): Promise<void> {
     try {
-      this.useDatabase = await isDatabaseAvailable();
+      this.useDatabase = await isSupabaseAvailable();
       if (this.useDatabase) {
-        logger.info('Using database-backed cache');
+        logger.info('Using Supabase-backed cache');
         // Clean up expired entries on startup
         await this.cleanExpiredEntries();
       } else {
-        logger.info('Using in-memory cache (database not available)');
+        logger.info('Using in-memory cache (Supabase not available)');
       }
     } catch (error) {
-      logger.warn('Failed to initialize database cache, using in-memory', {
+      logger.warn('Failed to initialize Supabase cache, using in-memory', {
         error: error instanceof Error ? error.message : String(error),
       });
       this.useDatabase = false;
@@ -55,14 +55,16 @@ class Cache {
     if (!this.useDatabase) return;
     
     try {
-      const now = new Date();
-      await prisma.cacheEntry.deleteMany({
-        where: {
-          expiresAt: {
-            lt: now,
-          },
-        },
-      });
+      const now = new Date().toISOString();
+      const supabase = getSupabaseAdminClient();
+      const { error } = await supabase
+        .from('cache_entries')
+        .delete()
+        .lt('expiresAt', now);
+      
+      if (error) {
+        throw error;
+      }
     } catch (error) {
       logger.warn('Failed to clean expired cache entries', {
         error: error instanceof Error ? error.message : String(error),
@@ -73,15 +75,19 @@ class Cache {
   async isValid(key: string = 'default'): Promise<boolean> {
     if (this.useDatabase) {
       try {
-        const entry = await prisma.cacheEntry.findUnique({
-          where: { key },
-        });
-        if (!entry) {
+        const supabase = getSupabaseAdminClient();
+        const { data: entry, error } = await supabase
+          .from('cache_entries')
+          .select('expiresAt')
+          .eq('key', key)
+          .single();
+        
+        if (error || !entry) {
           return false;
         }
-        return entry.expiresAt > new Date();
+        return new Date(entry.expiresAt) > new Date();
       } catch (error) {
-        logger.warn('Database cache check failed, falling back to in-memory', {
+        logger.warn('Supabase cache check failed, falling back to in-memory', {
           error: error instanceof Error ? error.message : String(error),
         });
         this.useDatabase = false;
@@ -104,15 +110,19 @@ class Cache {
 
     if (this.useDatabase) {
       try {
-        const entry = await prisma.cacheEntry.findUnique({
-          where: { key },
-        });
-        if (entry && entry.expiresAt > new Date()) {
+        const supabase = getSupabaseAdminClient();
+        const { data: entry, error } = await supabase
+          .from('cache_entries')
+          .select('data, expiresAt')
+          .eq('key', key)
+          .single();
+        
+        if (!error && entry && new Date(entry.expiresAt) > new Date()) {
           return entry.data as DeparturesResponse;
         }
         return null;
       } catch (error) {
-        logger.warn('Database cache get failed, falling back to in-memory', {
+        logger.warn('Supabase cache get failed, falling back to in-memory', {
           error: error instanceof Error ? error.message : String(error),
         });
         this.useDatabase = false;
@@ -127,27 +137,30 @@ class Cache {
 
     if (this.useDatabase) {
       try {
-        await prisma.cacheEntry.upsert({
-          where: { key },
-          update: {
-            data: data as unknown as Record<string, unknown>,
-            timestamp: new Date(),
-            expiresAt,
-          },
-          create: {
+        const supabase = getSupabaseAdminClient();
+        const { error } = await supabase
+          .from('cache_entries')
+          .upsert({
             key,
             data: data as unknown as Record<string, unknown>,
-            expiresAt,
-          },
-        });
-        logger.debug('Cache updated (database)', {
+            timestamp: new Date().toISOString(),
+            expiresAt: expiresAt.toISOString(),
+          }, {
+            onConflict: 'key',
+          });
+        
+        if (error) {
+          throw error;
+        }
+        
+        logger.debug('Cache updated (Supabase)', {
           key,
           duration: this.duration / 1000,
           timestamp: new Date().toISOString(),
         });
         return;
       } catch (error) {
-        logger.warn('Database cache set failed, falling back to in-memory', {
+        logger.warn('Supabase cache set failed, falling back to in-memory', {
           error: error instanceof Error ? error.message : String(error),
         });
         this.useDatabase = false;
@@ -168,17 +181,24 @@ class Cache {
   async clear(key?: string): Promise<void> {
     if (this.useDatabase) {
       try {
+        const supabase = getSupabaseAdminClient();
         if (key) {
-          await prisma.cacheEntry.delete({
-            where: { key },
-          });
+          const { error } = await supabase
+            .from('cache_entries')
+            .delete()
+            .eq('key', key);
+          if (error) throw error;
         } else {
-          await prisma.cacheEntry.deleteMany({});
+          const { error } = await supabase
+            .from('cache_entries')
+            .delete()
+            .neq('key', ''); // Delete all
+          if (error) throw error;
         }
-        logger.debug('Cache cleared (database)', { key: key || 'all' });
+        logger.debug('Cache cleared (Supabase)', { key: key || 'all' });
         return;
       } catch (error) {
-        logger.warn('Database cache clear failed, falling back to in-memory', {
+        logger.warn('Supabase cache clear failed, falling back to in-memory', {
           error: error instanceof Error ? error.message : String(error),
         });
         this.useDatabase = false;
@@ -197,15 +217,19 @@ class Cache {
   async getAge(key: string = 'default'): Promise<number | null> {
     if (this.useDatabase) {
       try {
-        const entry = await prisma.cacheEntry.findUnique({
-          where: { key },
-        });
-        if (!entry) {
+        const supabase = getSupabaseAdminClient();
+        const { data: entry, error } = await supabase
+          .from('cache_entries')
+          .select('timestamp')
+          .eq('key', key)
+          .single();
+        
+        if (error || !entry) {
           return null;
         }
-        return Math.round((Date.now() - entry.timestamp.getTime()) / 1000);
+        return Math.round((Date.now() - new Date(entry.timestamp).getTime()) / 1000);
       } catch (error) {
-        logger.warn('Database cache age check failed, falling back to in-memory', {
+        logger.warn('Supabase cache age check failed, falling back to in-memory', {
           error: error instanceof Error ? error.message : String(error),
         });
         this.useDatabase = false;
