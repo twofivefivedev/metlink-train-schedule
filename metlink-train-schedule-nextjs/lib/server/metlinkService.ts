@@ -238,10 +238,22 @@ export async function getMultipleStationDepartures(
       const departures = await getWairarapaDepartures(stopId, serviceId);
       // Normalize the stopId to ensure consistent station IDs (WELL1 -> WELL)
       const normalizedStopId = normalizeStationId(stopId);
-      return departures.map(departure => ({
+      const result = departures.map(departure => ({
         ...departure,
         station: normalizedStopId,
       }));
+      
+      // Debug logging for Wellington
+      if (normalizedStopId === 'WELL' || stopId.toUpperCase().includes('WELL')) {
+        logger.info(`Wellington Station departures fetched`, {
+          stopId,
+          normalizedStopId,
+          count: result.length,
+          sampleDestinations: result.slice(0, 3).map(d => d.destination?.stop_id),
+        });
+      }
+      
+      return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorDetails = error instanceof Error ? {
