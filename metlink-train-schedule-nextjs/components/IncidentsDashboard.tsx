@@ -7,6 +7,9 @@
 
 import { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { LineSelector } from './LineSelector';
+import { LINE_NAMES } from '@/lib/constants';
+import type { LineCode } from '@/lib/constants';
 
 interface IncidentSummary {
   total: number;
@@ -57,6 +60,7 @@ export function IncidentsDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d'>('7d');
+  const [selectedLine, setSelectedLine] = useState<LineCode>('WRL');
 
   useEffect(() => {
     async function fetchData() {
@@ -81,6 +85,7 @@ export function IncidentsDashboard() {
 
         // Fetch incidents summary
         const summaryParams = new URLSearchParams({
+          serviceId: selectedLine,
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
         });
@@ -94,6 +99,7 @@ export function IncidentsDashboard() {
 
         // Fetch recent incidents
         const recentParams = new URLSearchParams({
+          serviceId: selectedLine,
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
           limit: '50',
@@ -122,7 +128,7 @@ export function IncidentsDashboard() {
     }
 
     fetchData();
-  }, [timeRange]);
+  }, [timeRange, selectedLine]);
 
   if (loading) {
     return (
@@ -166,26 +172,36 @@ export function IncidentsDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Time Range Selector */}
+      {/* Filters Section */}
       <div className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white">
         <div className="p-6 border-b-2 border-black dark:border-white">
-          <h2 className="font-bold text-lg uppercase mb-1">Time Range</h2>
+          <h2 className="font-bold text-lg uppercase mb-1">Filters</h2>
         </div>
         <div className="p-6">
-          <div className="flex gap-2">
-            {(['24h', '7d', '30d'] as const).map((range) => (
-              <button
-                key={range}
-                onClick={() => setTimeRange(range)}
-                className={`px-4 py-2 border-2 border-black dark:border-white font-semibold uppercase transition-colors ${
-                  timeRange === range
-                    ? 'bg-black dark:bg-white text-white dark:text-black'
-                    : 'bg-white dark:bg-black text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black'
-                }`}
-              >
-                {range === '24h' ? '24 Hours' : range === '7d' ? '7 Days' : '30 Days'}
-              </button>
-            ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <LineSelector selectedLine={selectedLine} onLineChange={setSelectedLine} />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold uppercase mb-2 text-black dark:text-white">
+                Time Range
+              </label>
+              <div className="flex gap-2">
+                {(['24h', '7d', '30d'] as const).map((range) => (
+                  <button
+                    key={range}
+                    onClick={() => setTimeRange(range)}
+                    className={`px-4 py-2 border-2 border-black dark:border-white font-semibold uppercase transition-colors ${
+                      timeRange === range
+                        ? 'bg-black dark:bg-white text-white dark:text-black'
+                        : 'bg-white dark:bg-black text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black'
+                    }`}
+                  >
+                    {range === '24h' ? '24 Hours' : range === '7d' ? '7 Days' : '30 Days'}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -194,7 +210,9 @@ export function IncidentsDashboard() {
       <div className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white">
         <div className="p-6 border-b-2 border-black dark:border-white">
           <h2 className="font-bold text-lg uppercase mb-1">Incidents Summary</h2>
-          <p className="text-black/80 dark:text-white/80 text-sm">Last {timeRange === '24h' ? '24 hours' : timeRange === '7d' ? '7 days' : '30 days'}</p>
+          <p className="text-black/80 dark:text-white/80 text-sm">
+            {LINE_NAMES[selectedLine]} - Last {timeRange === '24h' ? '24 hours' : timeRange === '7d' ? '7 days' : '30 days'}
+          </p>
         </div>
         <div className="p-6">
           {summary ? (
