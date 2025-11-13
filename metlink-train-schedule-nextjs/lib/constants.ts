@@ -122,6 +122,8 @@ export const STATION_NAMES: Record<string, string> = {
   UPPE: 'Upper Hutt Station',
   WATE: 'Waterloo Station',
   WELL: 'Wellington Station',
+  WELL1: 'Wellington Station',
+  WELL2: 'Wellington Station',
   WOOD: 'Woodside Station',
   // Kapiti Line
   KENE: 'Kenepuru Station',
@@ -225,11 +227,14 @@ export const STATION_NAMES: Record<string, string> = {
 // Hutt Valley Line: Upper Hutt → Wellington (outbound), Wellington → Upper Hutt (inbound)
 export const LINE_STATIONS: Record<LineCode, string[]> = {
   // Wairarapa Line: Masterton → Renall Street → Solway → Carterton → Matarawa → Woodside → Featherston → Maymorn → Upper Hutt → Waterloo → Petone → Wellington
-  WRL: ['MAST', 'RENA', 'SOLW', 'CART', 'MATA', 'WOOD', 'FEAT', 'MAYM', 'UPPE', 'WATE', 'PETO', 'WELL'],
+  // Note: WELL1 is used for fetching, but normalized to WELL in departures
+  WRL: ['MAST', 'RENA', 'SOLW', 'CART', 'MATA', 'WOOD', 'FEAT', 'MAYM', 'UPPE', 'WATE', 'PETO', 'WELL1'],
   // Kapiti Line: Wellington → Kenepuru → Linden → Tawa → Redwood → Takapu Road → Porirua → Paremata → Mana → Plimmerton → Pukerua Bay → Paekākāriki → Waikanae
-  KPL: ['WELL', 'KENE', 'LIND', 'TAWA', 'REDW', 'TAKA', 'PORI', 'PARE', 'MANA', 'PLIM', 'PUKE', 'PAEK', 'WAIK'],
+  // Note: WELL1 is used for fetching, but normalized to WELL in departures
+  KPL: ['WELL1', 'KENE', 'LIND', 'TAWA', 'REDW', 'TAKA', 'PORI', 'PARE', 'MANA', 'PLIM', 'PUKE', 'PAEK', 'WAIK'],
   // Hutt Valley Line: Wellington → Ngauranga → Petone → Waterloo → Woburn → Taita → Pomare → Epuni → Naenae → Wingate → Manor Park → Ava → Heretaunga → Silverstream → Wallaceville → Trentham → Upper Hutt
-  HVL: ['WELL', 'NGAU', 'PETO', 'WATE', 'WOBU', 'TAIT', 'POMA', 'EPUN', 'NAEN', 'WING', 'MANO', 'AVA', 'HERE', 'SILV', 'WALL', 'TREN', 'UPPE'],
+  // Note: WELL1 is used for fetching, but normalized to WELL in departures
+  HVL: ['WELL1', 'NGAU', 'PETO', 'WATE', 'WOBU', 'TAIT', 'POMA', 'EPUN', 'NAEN', 'WING', 'MANO', 'AVA', 'HERE', 'SILV', 'WALL', 'TREN', 'UPPE'],
   // Johnsonville Line: Train line stations (using numeric stop IDs from GTFS)
   JVL: ['2001', '2002', '2005', '2006', '2008', '2011', '2012', '2016', '2022', '2026', '2028', '2030', '2871', '2873', '3000', '3081', '3200', '3202', '3204', '3206', '3208', '3900', '3902', '3903', '3904', '3906', '3908', '3910', '3911', '3912', '3914', '3916', '3918', '3920', '3922', '3923', '3924', '3926', '3927', '3928', '3929', '3933', '3934', '3948', '3950', '3952', '3954', '3956', '3958', '3960', '3961', '3962', '3964', '3966', '3968', '3969', '3970', '3972', '3974', '3976', '3978', '3980', '3982'],
 } as const;
@@ -277,8 +282,8 @@ export const DIRECTIONS = {
   OUTBOUND: 'outbound',
 } as const;
 
-// Wellington Station Identifiers (normalized, no platform numbers)
-export const WELLINGTON_STOPS = ['WELL'] as const;
+// Wellington Station Identifiers (including platform variants)
+export const WELLINGTON_STOPS = ['WELL', 'WELL1', 'WELL2'] as const;
 
 // Refresh intervals (in milliseconds)
 // Increased default polling to 5 minutes - train schedules don't change frequently

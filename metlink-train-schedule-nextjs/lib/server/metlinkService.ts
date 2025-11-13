@@ -4,7 +4,7 @@
  */
 
 import axios, { AxiosInstance } from 'axios';
-import { SERVICE_IDS, getStationPlatformVariants } from '@/lib/constants';
+import { SERVICE_IDS, getStationPlatformVariants, normalizeStationId } from '@/lib/constants';
 import { getMetlinkApiBase, env } from '@/lib/config/env';
 import { retry } from './retry';
 import { logger } from './logger';
@@ -236,9 +236,11 @@ export async function getMultipleStationDepartures(
   const promises = stopIds.map(async (stopId) => {
     try {
       const departures = await getWairarapaDepartures(stopId, serviceId);
+      // Normalize the stopId to ensure consistent station IDs (WELL1 -> WELL)
+      const normalizedStopId = normalizeStationId(stopId);
       return departures.map(departure => ({
         ...departure,
-        station: stopId,
+        station: normalizedStopId,
       }));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

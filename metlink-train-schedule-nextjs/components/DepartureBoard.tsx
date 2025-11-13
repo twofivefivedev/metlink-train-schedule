@@ -343,9 +343,9 @@ export function DepartureBoard({
         return stationName.toLowerCase().includes('johnsonville');
       }) || null;
     }
-    // Check if array starts with WELL (Wellington) - if so, origin is last station
+    // Check if array starts with WELL/WELL1/WELL2 (Wellington) - if so, origin is last station
     // Otherwise, origin is first station (for WRL: Masterton)
-    else if (lineStations[0] === 'WELL') {
+    else if (lineStations[0] === 'WELL' || lineStations[0] === 'WELL1' || lineStations[0] === 'WELL2') {
       originStationId = lineStations[lineStations.length - 1];
     } else {
       originStationId = lineStations[0];
