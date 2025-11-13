@@ -389,44 +389,47 @@ export function DepartureBoard({
     <div className="min-h-screen bg-white dark:bg-black text-black dark:text-white">
       {/* Header */}
       <header className="border-b-2 border-black dark:border-white">
-        <div className="max-w-7xl mx-auto px-8 py-6">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-3xl md:text-4xl font-bold tracking-wider text-black dark:text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 py-4 sm:py-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-wider text-black dark:text-white break-words">
               {directionLabel}
             </h1>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <Button
                 onClick={() => setSaveDialogOpen(true)}
                 variant="outline"
                 aria-label="Save current schedule configuration"
-                className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors font-semibold uppercase tracking-wider px-4 py-3 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white"
+                className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors font-semibold uppercase tracking-wider px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base flex-1 sm:flex-initial focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white"
               >
-                <BookmarkPlus className="h-4 w-4 mr-2" aria-hidden="true" />
-                Save
+                <BookmarkPlus className="h-4 w-4 sm:mr-2" aria-hidden="true" />
+                <span className="hidden sm:inline">Save</span>
               </Button>
               <Button
                 onClick={onDirectionToggle}
                 variant="outline"
                 aria-label={`Switch to ${direction === 'inbound' ? 'outbound' : 'inbound'} trains`}
-                className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors font-semibold uppercase tracking-wider px-6 py-3 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white group"
+                className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors font-semibold uppercase tracking-wider px-3 sm:px-6 py-2 sm:py-3 text-sm sm:text-base flex-1 sm:flex-initial focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white group"
               >
-                <ArrowLeftRight className="h-4 w-4 mr-2 transition-transform duration-300 ease-in-out group-hover:rotate-180" aria-hidden="true" />
-                Switch Direction
+                <ArrowLeftRight className="h-4 w-4 sm:mr-2 transition-transform duration-300 ease-in-out group-hover:rotate-180" aria-hidden="true" />
+                <span className="hidden sm:inline">Switch Direction</span>
+                <span className="sm:hidden">Switch</span>
               </Button>
             </div>
           </div>
-          <div className="flex items-center gap-4 text-sm font-mono text-black/70 dark:text-white/70" role="status" aria-live="polite">
-            <time dateTime={today.toISOString()}>{todayFormatted}</time>
-            <span aria-hidden="true">|</span>
-            <span>
-              Last updated: {lastUpdated ? (
-                <time dateTime={lastUpdated.toISOString()}>{lastUpdated.toLocaleTimeString()}</time>
-              ) : (
-                '--:--'
-              )}
-              {refreshing && <span className="sr-only">Refreshing schedule data</span>}
-            </span>
-            <span aria-hidden="true">|</span>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 text-xs sm:text-sm font-mono text-black/70 dark:text-white/70" role="status" aria-live="polite">
+            <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
+              <time dateTime={today.toISOString()}>{todayFormatted}</time>
+              <span aria-hidden="true" className="hidden sm:inline">|</span>
+              <span>
+                Last updated: {lastUpdated ? (
+                  <time dateTime={lastUpdated.toISOString()}>{lastUpdated.toLocaleTimeString()}</time>
+                ) : (
+                  '--:--'
+                )}
+                {refreshing && <span className="sr-only">Refreshing schedule data</span>}
+              </span>
+            </div>
+            <span aria-hidden="true" className="hidden sm:inline">|</span>
             <div className="flex items-center gap-2">
               <Button
                 onClick={onRefresh}
@@ -448,11 +451,11 @@ export function DepartureBoard({
       {nextDepartureWaitTime !== null && nextDepartureWaitTime.minutes !== null && (
         <section
           aria-labelledby="wait-time-heading"
-          className="max-w-7xl mx-auto px-8 pb-2 pt-4"
+          className="max-w-7xl mx-auto px-4 sm:px-8 pb-2 pt-4"
         >
           <div className={selectedNotice ? "grid grid-cols-1 md:grid-cols-2 gap-4" : ""}>
             {/* Wait Time Card */}
-            <div className="bg-black dark:bg-white text-white dark:text-black border-2 border-black dark:border-white px-8 py-6">
+            <div className="bg-black dark:bg-white text-white dark:text-black border-2 border-black dark:border-white px-4 sm:px-8 py-4 sm:py-6">
               <div className="flex items-center gap-4">
                 <Clock className="h-6 w-6" aria-hidden="true" />
                 <div>
@@ -472,7 +475,7 @@ export function DepartureBoard({
 
             {/* Service Notice Panel - only shown when user selects a notice */}
             {selectedNotice && (
-              <div className="bg-white dark:bg-black border-2 border-black dark:border-white px-8 py-6 animate-slide-in-right">
+              <div className="bg-white dark:bg-black border-2 border-black dark:border-white px-4 sm:px-8 py-4 sm:py-6 animate-slide-in-right">
                 <h2 id="service-notice-heading" className="text-sm font-semibold uppercase tracking-wider mb-3">
                   Service Notice
                 </h2>
@@ -511,10 +514,10 @@ export function DepartureBoard({
         <section
           aria-labelledby="warnings-heading"
           aria-live="polite"
-          className="max-w-7xl mx-auto px-8 py-6"
+          className="max-w-7xl mx-auto px-4 sm:px-8 py-4 sm:py-6"
         >
           <div className="bg-white dark:bg-black border-2 border-black dark:border-white">
-            <div className="border-b-2 border-black dark:border-white px-8 py-4 bg-black dark:bg-white text-white dark:text-black">
+            <div className="border-b-2 border-black dark:border-white px-4 sm:px-8 py-3 sm:py-4 bg-black dark:bg-white text-white dark:text-black">
               <div className="flex items-center gap-3">
                 <AlertTriangle className="h-5 w-5" aria-hidden="true" />
                 <h2 id="warnings-heading" className="text-lg font-bold uppercase tracking-wider">
@@ -542,16 +545,16 @@ export function DepartureBoard({
                 return (
                   <li 
                     key={index} 
-                    className="px-8 py-4 animate-fade-in-slide" 
+                    className="px-4 sm:px-8 py-3 sm:py-4 animate-fade-in-slide" 
                     style={{ animationDelay: `${animationDelay}ms`, animationFillMode: 'both' }}
                     role="listitem"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
-                        <span className="font-bold uppercase text-black dark:text-white">
+                        <span className="font-bold uppercase text-black dark:text-white text-sm sm:text-base">
                           {warning.message}
                         </span>
-                        <span className="text-black/70 dark:text-white/70 ml-4">
+                        <span className="text-black/70 dark:text-white/70 ml-2 sm:ml-4 text-xs sm:text-sm block sm:inline">
                           {station} - {time ? (
                             <time dateTime={time}>{formatTime24h(time)}</time>
                           ) : (
@@ -569,7 +572,7 @@ export function DepartureBoard({
       )}
 
       {/* Departure Board Table */}
-      <section aria-labelledby="departures-heading" className="max-w-7xl mx-auto px-8 pt-2 pb-8">
+      <section aria-labelledby="departures-heading" className="max-w-7xl mx-auto px-4 sm:px-8 pt-2 pb-8">
         {loading ? (
           <div className="bg-white dark:bg-black border-2 border-black dark:border-white animate-fade-in-scale">
             <h2 id="departures-heading" className="sr-only">
@@ -791,7 +794,7 @@ function DepartureBoardRow({ departure, index, onSelect, isSelected, showExpecte
 
   return (
     <div
-      className={`grid grid-cols-3 gap-8 px-8 py-5 transition-colors ${
+      className={`grid grid-cols-3 gap-4 sm:gap-8 px-4 sm:px-8 py-3 sm:py-5 transition-colors ${
         category !== 'normal' 
           ? 'cursor-pointer hover:bg-black/10 dark:hover:bg-white/10' 
           : 'hover:bg-black/5 dark:hover:bg-white/5'

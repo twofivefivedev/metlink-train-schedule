@@ -188,21 +188,21 @@ export default function Home() {
           
           {/* Controls Section */}
           <div className="border-b-2 border-black dark:border-white bg-white dark:bg-black">
-            <div className="max-w-7xl mx-auto px-8 py-4">
-              <div className="flex items-end gap-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
-                  <LineSelector
-                    selectedLine={selectedLine}
-                    onLineChange={handleLineChange}
-                  />
-                  <div className="flex items-end gap-2">
-                    <div className="flex-1">
-                      <StationSelector
-                        selectedLine={selectedLine}
-                        selectedStations={selectedStations[selectedLine] || []}
-                        onStationsChange={handleStationsChange}
-                      />
-                    </div>
+            <div className="max-w-7xl mx-auto px-4 sm:px-8 py-4">
+              <div className="flex flex-col gap-4">
+                <LineSelector
+                  selectedLine={selectedLine}
+                  onLineChange={handleLineChange}
+                />
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2">
+                  <div className="flex-1 min-w-0">
+                    <StationSelector
+                      selectedLine={selectedLine}
+                      selectedStations={selectedStations[selectedLine] || []}
+                      onStationsChange={handleStationsChange}
+                    />
+                  </div>
+                  <div className="flex items-end gap-2 flex-shrink-0">
                     <FiltersButton
                       stations={availableStations}
                       selectedStation={selectedStation}

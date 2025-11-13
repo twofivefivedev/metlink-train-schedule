@@ -39,7 +39,7 @@ export function FavoritesPanel({
 
   return (
     <div className="border-b border-black dark:border-white bg-white dark:bg-black">
-      <div className="max-w-7xl mx-auto px-8 py-2">
+      <div className="max-w-7xl mx-auto px-4 sm:px-8 py-2">
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="flex items-center gap-2 text-black dark:text-white text-sm font-semibold uppercase tracking-wider hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white"

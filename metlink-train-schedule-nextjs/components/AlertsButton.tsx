@@ -50,7 +50,7 @@ export function AlertsButton() {
             onClick={() => setIsOpen(false)}
             aria-hidden="true"
           />
-          <div className="absolute z-20 right-0 mt-2 w-80 bg-white dark:bg-black border-2 border-black dark:border-white">
+          <div className="absolute z-20 right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white dark:bg-black border-2 border-black dark:border-white">
             <div className="p-4 border-b-2 border-black dark:border-white flex items-center justify-between">
               <h3 className="text-sm font-semibold uppercase tracking-wider text-black dark:text-white">
                 Alert Notifications
