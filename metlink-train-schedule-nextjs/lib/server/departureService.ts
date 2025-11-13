@@ -12,12 +12,7 @@ import type { Departure, DeparturesResponse } from '@/types';
  */
 function isWellingtonDestination(departure: Departure): boolean {
   const destination = departure.destination?.stop_id || '';
-  // Normalize destination to handle platform variants (WELL1, WELL2 -> WELL)
-  const normalizedDestination = destination.replace(/\d+$/, '').toUpperCase();
-  return WELLINGTON_STOPS.some(stop => {
-    const normalizedStop = stop.replace(/\d+$/, '').toUpperCase();
-    return normalizedDestination === normalizedStop || destination.includes(stop);
-  });
+  return WELLINGTON_STOPS.some(stop => destination.includes(stop));
 }
 
 /**

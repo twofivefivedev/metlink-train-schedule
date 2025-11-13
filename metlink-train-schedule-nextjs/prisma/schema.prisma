@@ -1,0 +1,80 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Historical departure data for analytics
+model HistoricalDeparture {
+  id          String   @id @default(cuid())
+  serviceId   String
+  stopId      String
+  station     String?
+  destination String
+  destinationStopId String
+  aimedTime   DateTime
+  expectedTime DateTime?
+  status      String?
+  createdAt   DateTime @default(now())
+  
+  @@index([serviceId])
+  @@index([stopId])
+  @@index([station])
+  @@index([aimedTime])
+  @@index([createdAt])
+  @@map("historical_departures")
+}
+
+// Cache entries for API responses
+model CacheEntry {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  data      Json
+  timestamp DateTime @default(now())
+  expiresAt DateTime
+  
+  @@index([key])
+  @@index([expiresAt])
+  @@map("cache_entries")
+}
+
+// Performance metrics for monitoring
+model PerformanceMetric {
+  id            String   @id @default(cuid())
+  endpoint      String
+  method        String
+  statusCode    Int
+  responseTime  Int       // milliseconds
+  requestSize   Int?      // bytes
+  responseSize  Int?      // bytes
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+  
+  @@index([endpoint])
+  @@index([method])
+  @@index([statusCode])
+  @@index([createdAt])
+  @@map("performance_metrics")
+}
+
+// API request metrics
+model ApiRequestMetric {
+  id            String   @id @default(cuid())
+  endpoint      String
+  method        String
+  statusCode    Int
+  responseTime  Int       // milliseconds
+  cacheHit      Boolean  @default(false)
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+  
+  @@index([endpoint])
+  @@index([createdAt])
+  @@map("api_request_metrics")
+}

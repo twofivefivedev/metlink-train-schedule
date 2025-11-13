@@ -3,7 +3,7 @@
  * Helper functions for processing and formatting departure data
  */
 
-import { STATION_NAMES, normalizeStationId } from '@/lib/constants';
+import { STATION_NAMES } from '@/lib/constants';
 import type { Departure } from '@/types';
 
 /**
@@ -134,13 +134,10 @@ export function getDepartureStatus(departure: Departure): {
 
 /**
  * Get friendly station name
- * Normalizes platform variants (e.g., WELL1 -> WELL) before lookup
  */
 export function getStationName(stopId: string | undefined): string {
   if (!stopId) return 'Unknown';
-  // Normalize station ID to handle platform variants (WELL1 -> WELL)
-  const normalizedId = normalizeStationId(stopId);
-  return STATION_NAMES[normalizedId as keyof typeof STATION_NAMES] || normalizedId;
+  return STATION_NAMES[stopId as keyof typeof STATION_NAMES] || stopId;
 }
 
 /**
