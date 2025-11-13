@@ -1,9 +1,9 @@
 /**
  * Analytics Page
- * Displays performance metrics and on-time performance statistics
+ * Displays service incidents analytics and API performance metrics
  */
 
-import { HistoricalTrends } from '@/components/HistoricalTrends';
+import { IncidentsDashboard } from '@/components/IncidentsDashboard';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
@@ -20,7 +20,7 @@ export default function AnalyticsPage() {
                   Analytics & Performance
                 </h1>
                 <p className="text-black/80 dark:text-white/80">
-                  View performance metrics, on-time statistics, and historical data
+                  View service incidents (cancellations, delays, bus replacements) and API performance metrics
                 </p>
               </div>
               <div className="flex gap-2 flex-wrap">
@@ -36,13 +36,6 @@ export default function AnalyticsPage() {
                   variant="outline"
                   className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors font-semibold uppercase focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white"
                 >
-                  <Link href="/historical">Historical Data</Link>
-                </Button>
-                <Button
-                  asChild
-                  variant="outline"
-                  className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors font-semibold uppercase focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white"
-                >
                   <Link href="/docs">API Docs</Link>
                 </Button>
               </div>
@@ -52,7 +45,7 @@ export default function AnalyticsPage() {
 
         {/* Content Section */}
         <div className="max-w-7xl mx-auto px-4 sm:px-8 py-6">
-          <HistoricalTrends />
+          <IncidentsDashboard />
         </div>
       </main>
     </div>

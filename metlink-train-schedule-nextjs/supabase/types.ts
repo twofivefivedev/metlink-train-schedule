@@ -85,6 +85,50 @@ export interface Database {
           createdAt?: string
         }
       }
+      service_incidents: {
+        Row: {
+          id: string
+          serviceId: string
+          stopId: string
+          station: string | null
+          destination: string
+          destinationStopId: string
+          aimedTime: string
+          expectedTime: string | null
+          incidentType: 'cancelled' | 'delayed' | 'bus_replacement'
+          delayMinutes: number | null
+          details: Json | null
+          createdAt: string
+        }
+        Insert: {
+          id?: string
+          serviceId: string
+          stopId: string
+          station?: string | null
+          destination: string
+          destinationStopId: string
+          aimedTime: string
+          expectedTime?: string | null
+          incidentType: 'cancelled' | 'delayed' | 'bus_replacement'
+          delayMinutes?: number | null
+          details?: Json | null
+          createdAt?: string
+        }
+        Update: {
+          id?: string
+          serviceId?: string
+          stopId?: string
+          station?: string | null
+          destination?: string
+          destinationStopId?: string
+          aimedTime?: string
+          expectedTime?: string | null
+          incidentType?: 'cancelled' | 'delayed' | 'bus_replacement'
+          delayMinutes?: number | null
+          details?: Json | null
+          createdAt?: string
+        }
+      }
       performance_metrics: {
         Row: {
           id: string

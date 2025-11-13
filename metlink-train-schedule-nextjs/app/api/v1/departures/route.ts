@@ -11,7 +11,7 @@ import { processDepartures } from '@/lib/server/departureService';
 import { cache } from '@/lib/server/cache';
 import { success } from '@/lib/server/response';
 import { logger } from '@/lib/server/logger';
-import { storeHistoricalDepartures } from '@/lib/server/historicalService';
+import { recordServiceIncidents } from '@/lib/server/incidentsService';
 import { createPerformanceContext, recordPerformanceMetric, recordApiRequestMetric } from '@/lib/server/performance';
 
 export async function GET(request: NextRequest) {
@@ -100,11 +100,11 @@ export async function GET(request: NextRequest) {
     // Cache the result
     await cache.set({ inbound, outbound, total }, cacheKey);
 
-    // Store historical data for analytics (non-blocking)
+    // Record service incidents for analytics (non-blocking)
     const allDepartures = [...inbound, ...outbound];
-    storeHistoricalDepartures(allDepartures, stationCodes.join(','))
+    recordServiceIncidents(allDepartures, stationCodes.join(','))
       .catch((error) => {
-        logger.warn('Failed to store historical data', {
+        logger.warn('Failed to record service incidents', {
           error: error instanceof Error ? error.message : String(error),
         });
       });

@@ -37,13 +37,6 @@ export default function DocsPage() {
                 >
                   <Link href="/analytics">Analytics</Link>
                 </Button>
-                <Button
-                  asChild
-                  variant="outline"
-                  className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors font-semibold uppercase focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white"
-                >
-                  <Link href="/historical">Historical Data</Link>
-                </Button>
               </div>
             </div>
           </div>
@@ -101,27 +94,27 @@ export default function DocsPage() {
                   </div>
                 </div>
 
-                {/* On-Time Performance Endpoint */}
+                {/* Incidents Summary Endpoint */}
                 <div>
-                  <h3 className="text-xl font-bold uppercase mb-2 text-black dark:text-white">GET /analytics/on-time-performance</h3>
+                  <h3 className="text-xl font-bold uppercase mb-2 text-black dark:text-white">GET /analytics/incidents/summary</h3>
                   <p className="text-black/80 dark:text-white/80 mb-3">
-                    Get on-time performance metrics for a service line.
+                    Get summary statistics for service incidents (cancellations, delays, bus replacements).
                   </p>
                   <div className="bg-black dark:bg-white text-white dark:text-black p-4 border-2 border-black dark:border-white">
                     <p className="font-mono text-sm mb-2 font-bold uppercase">Query Parameters:</p>
                     <ul className="list-disc list-inside space-y-1 text-sm ml-2">
-                      <li><code className="bg-black/20 dark:bg-white/20 px-1">serviceId</code> (required): Service ID (WRL, KPL, HVL, JVL)</li>
-                      <li><code className="bg-black/20 dark:bg-white/20 px-1">startDate</code> (optional): Start date (ISO 8601)</li>
-                      <li><code className="bg-black/20 dark:bg-white/20 px-1">endDate</code> (optional): End date (ISO 8601)</li>
+                      <li><code className="bg-black/20 dark:bg-white/20 px-1">serviceId</code> (optional): Service ID filter (WRL, KPL, HVL, JVL)</li>
+                      <li><code className="bg-black/20 dark:bg-white/20 px-1">startDate</code> (optional): Start date (ISO 8601), defaults to 7 days ago</li>
+                      <li><code className="bg-black/20 dark:bg-white/20 px-1">endDate</code> (optional): End date (ISO 8601), defaults to now</li>
                     </ul>
                   </div>
                 </div>
 
-                {/* Historical Endpoint */}
+                {/* Recent Incidents Endpoint */}
                 <div>
-                  <h3 className="text-xl font-bold uppercase mb-2 text-black dark:text-white">GET /analytics/historical</h3>
+                  <h3 className="text-xl font-bold uppercase mb-2 text-black dark:text-white">GET /analytics/incidents/recent</h3>
                   <p className="text-black/80 dark:text-white/80 mb-3">
-                    Get historical departure data for analytics.
+                    Get recent service incidents with details.
                   </p>
                   <div className="bg-black dark:bg-white text-white dark:text-black p-4 border-2 border-black dark:border-white">
                     <p className="font-mono text-sm mb-2 font-bold uppercase">Query Parameters:</p>
@@ -129,9 +122,10 @@ export default function DocsPage() {
                       <li><code className="bg-black/20 dark:bg-white/20 px-1">serviceId</code> (optional): Service ID filter</li>
                       <li><code className="bg-black/20 dark:bg-white/20 px-1">stopId</code> (optional): Stop ID filter</li>
                       <li><code className="bg-black/20 dark:bg-white/20 px-1">station</code> (optional): Station code filter</li>
-                      <li><code className="bg-black/20 dark:bg-white/20 px-1">startDate</code> (optional): Start date (ISO 8601)</li>
-                      <li><code className="bg-black/20 dark:bg-white/20 px-1">endDate</code> (optional): End date (ISO 8601)</li>
-                      <li><code className="bg-black/20 dark:bg-white/20 px-1">limit</code> (optional): Maximum records (default: 1000)</li>
+                      <li><code className="bg-black/20 dark:bg-white/20 px-1">incidentType</code> (optional): Filter by type (cancelled, delayed, bus_replacement)</li>
+                      <li><code className="bg-black/20 dark:bg-white/20 px-1">startDate</code> (optional): Start date (ISO 8601), defaults to 7 days ago</li>
+                      <li><code className="bg-black/20 dark:bg-white/20 px-1">endDate</code> (optional): End date (ISO 8601), defaults to now</li>
+                      <li><code className="bg-black/20 dark:bg-white/20 px-1">limit</code> (optional): Maximum records (default: 100)</li>
                     </ul>
                   </div>
                 </div>
