@@ -78,3 +78,60 @@ model ApiRequestMetric {
   @@index([createdAt])
   @@map("api_request_metrics")
 }
+
+// User preferences - identified by client-generated userId
+model User {
+  id            String   @id @default(cuid())
+  userId        String   @unique // Client-generated identifier
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  preferences   UserPreferences?
+  scheduleConfigs ScheduleConfig[]
+  
+  @@index([userId])
+  @@map("users")
+}
+
+// User alert preferences
+model UserPreferences {
+  id                String   @id @default(cuid())
+  userInternalId    String   @unique
+  user              User     @relation(fields: [userInternalId], references: [id], onDelete: Cascade)
+  
+  alertsEnabled     Boolean  @default(false)
+  notifyOnDelay     Boolean  @default(true)
+  notifyOnCancellation Boolean @default(true)
+  notifyOnApproaching Boolean @default(false)
+  approachingMinutes Int      @default(5)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@map("user_preferences")
+}
+
+// Schedule configurations (favorites)
+model ScheduleConfig {
+  id              String   @id @default(cuid())
+  userInternalId  String
+  user            User     @relation(fields: [userInternalId], references: [id], onDelete: Cascade)
+  
+  name            String
+  line            String   // LineCode (WRL, KPL, HVL, JVL)
+  selectedStations Json    // Array of station strings
+  direction       String   // 'inbound' | 'outbound'
+  
+  // Filter preferences
+  selectedStation String?
+  routeFilter     String   @default("all") // 'all' | 'express' | 'all-stops'
+  sortOption      String   @default("time") // SortOption
+  sortDirection   String   @default("asc")  // 'asc' | 'desc'
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userInternalId])
+  @@index([line])
+  @@map("schedule_configs")
+}

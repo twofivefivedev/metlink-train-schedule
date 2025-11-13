@@ -1,25 +1,43 @@
 /**
  * GET/POST /api/preferences
- * API stub for user preferences (currently uses localStorage, but provides API interface for future backend integration)
+ * User preferences API - uses database with localStorage fallback
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { success } from '@/lib/server/response';
+import { success, error as errorResponse } from '@/lib/server/response';
 import { logger } from '@/lib/server/logger';
+import {
+  loadUserPreferencesFromDb,
+  saveScheduleConfigToDb,
+  removeScheduleConfigFromDb,
+  updateAlertPreferencesInDb,
+} from '@/lib/server/preferencesService';
 
 /**
  * GET /api/preferences
- * Get user preferences (stub - returns empty for now, client uses localStorage)
+ * Get user preferences from database
  */
 export async function GET(request: NextRequest) {
   try {
-    // In the future, this would fetch from a database
-    // For now, return empty preferences as the client uses localStorage
-    logger.info('Preferences API called (stub)');
+    const userId = request.headers.get('X-User-Id') || request.nextUrl.searchParams.get('userId');
     
+    if (!userId) {
+      return NextResponse.json(
+        errorResponse('User ID is required', 'VALIDATION_ERROR'),
+        { status: 400 }
+      );
+    }
+
+    const preferences = await loadUserPreferencesFromDb(userId);
+    
+    if (preferences) {
+      return NextResponse.json(success(preferences));
+    }
+
+    // Fallback: return empty preferences if database unavailable
     return NextResponse.json(
       success({
-        favorites: [],
+        configs: [],
         alerts: {
           enabled: false,
           notifyOnDelay: true,
@@ -32,13 +50,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     logger.error('Error fetching preferences', error as Error);
     return NextResponse.json(
-      {
-        success: false,
-        error: {
-          message: 'Failed to fetch preferences',
-          code: 'FETCH_ERROR',
-        },
-      },
+      errorResponse('Failed to fetch preferences', 'FETCH_ERROR'),
       { status: 500 }
     );
   }
@@ -46,31 +58,51 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/preferences
- * Save user preferences (stub - for future backend integration)
+ * Save user preferences to database
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    logger.info('Preferences save API called (stub)', { hasBody: !!body });
+    const userId = body.userId || request.headers.get('X-User-Id');
     
-    // In the future, this would save to a database
-    // For now, just acknowledge the request
-    
+    if (!userId) {
+      return NextResponse.json(
+        errorResponse('User ID is required', 'VALIDATION_ERROR'),
+        { status: 400 }
+      );
+    }
+
+    // Handle different types of preference updates
+    if (body.config) {
+      // Save schedule config
+      const saved = await saveScheduleConfigToDb(userId, body.config);
+      if (saved) {
+        return NextResponse.json(success({ config: saved }));
+      }
+    } else if (body.configId && body.action === 'delete') {
+      // Remove schedule config
+      const removed = await removeScheduleConfigFromDb(userId, body.configId);
+      if (removed) {
+        return NextResponse.json(success({ removed: true }));
+      }
+    } else if (body.alerts) {
+      // Update alert preferences
+      const updated = await updateAlertPreferencesInDb(userId, body.alerts);
+      if (updated) {
+        return NextResponse.json(success({ alerts: updated }));
+      }
+    }
+
+    // If database operations failed, still return success (client will use localStorage)
     return NextResponse.json(
       success({
-        message: 'Preferences saved (stub)',
+        message: 'Preferences saved (fallback to localStorage)',
       })
     );
   } catch (error) {
     logger.error('Error saving preferences', error as Error);
     return NextResponse.json(
-      {
-        success: false,
-        error: {
-          message: 'Failed to save preferences',
-          code: 'SAVE_ERROR',
-        },
-      },
+      errorResponse('Failed to save preferences', 'SAVE_ERROR'),
       { status: 500 }
     );
   }
