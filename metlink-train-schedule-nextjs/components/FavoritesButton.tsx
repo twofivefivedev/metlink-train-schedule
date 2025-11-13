@@ -5,10 +5,12 @@ import { Button } from './ui/button';
 import { Star, Bell, BellOff, X } from 'lucide-react';
 import {
   loadPreferences,
+  loadPreferencesSync,
   addFavorite,
   removeFavorite,
   updateAlertPreferences,
   type AlertPreferences,
+  type UserPreferences,
 } from '@/lib/utils/favorites';
 import { STATION_NAMES, LINE_NAMES } from '@/lib/constants';
 import type { LineCode } from '@/lib/constants';
@@ -24,14 +26,19 @@ export function FavoritesButton({
   selectedDirection,
   selectedLine,
 }: FavoritesButtonProps) {
-  const [preferences, setPreferences] = useState(loadPreferences());
+  const [preferences, setPreferences] = useState<UserPreferences>(loadPreferencesSync());
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
-    setPreferences(loadPreferences());
+    // Load preferences asynchronously (may load from database)
+    const loadPrefs = async () => {
+      const prefs = await loadPreferences();
+      setPreferences(prefs);
+    };
+    loadPrefs();
   }, []);
 
-  const handleAddFavorite = () => {
+  const handleAddFavorite = async () => {
     if (!selectedStation) return;
 
     addFavorite({
@@ -39,21 +46,24 @@ export function FavoritesButton({
       direction: selectedDirection,
       line: selectedLine,
     });
-    setPreferences(loadPreferences());
+    const updatedPrefs = await loadPreferences();
+    setPreferences(updatedPrefs);
   };
 
-  const handleRemoveFavorite = (favoriteId: string) => {
+  const handleRemoveFavorite = async (favoriteId: string) => {
     removeFavorite(favoriteId);
-    setPreferences(loadPreferences());
+    const updatedPrefs = await loadPreferences();
+    setPreferences(updatedPrefs);
   };
 
-  const handleToggleAlerts = () => {
+  const handleToggleAlerts = async () => {
     const newAlerts: AlertPreferences = {
       ...preferences.alerts,
       enabled: !preferences.alerts.enabled,
     };
-    updateAlertPreferences(newAlerts);
-    setPreferences(loadPreferences());
+    await updateAlertPreferences(newAlerts);
+    const updatedPrefs = await loadPreferences();
+    setPreferences(updatedPrefs);
   };
 
   const isCurrentRouteFavorite = selectedStation

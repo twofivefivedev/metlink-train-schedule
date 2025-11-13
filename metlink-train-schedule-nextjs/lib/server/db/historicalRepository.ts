@@ -59,8 +59,8 @@ class HistoricalRepositoryImpl implements HistoricalRepository {
         };
       });
 
-      const { error } = await supabase
-        .from('historical_departures')
+      const { error } = await (supabase
+        .from('historical_departures') as any)
         .insert(records);
 
       if (error) {
@@ -158,13 +158,14 @@ class HistoricalRepositoryImpl implements HistoricalRepository {
         throw error;
       }
 
-      const total = data?.length || 0;
+      const records = (data || []) as Array<{ aimedTime: string; expectedTime: string | null }>;
+      const total = records.length;
       let onTime = 0;
       let delayed = 0;
       let cancelled = 0;
       let totalDelay = 0;
 
-      (data || []).forEach((record) => {
+      records.forEach((record) => {
         if (!record.expectedTime) {
           cancelled++;
           return;

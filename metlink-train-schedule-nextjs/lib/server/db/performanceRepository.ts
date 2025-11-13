@@ -67,8 +67,8 @@ class PerformanceRepositoryImpl implements PerformanceRepository {
         errorMessage: metric.errorMessage ?? null,
       };
 
-      const { error } = await supabase
-        .from('performance_metrics')
+      const { error } = await (supabase
+        .from('performance_metrics') as any)
         .insert(insertData);
 
       if (error) {
@@ -101,8 +101,8 @@ class PerformanceRepositoryImpl implements PerformanceRepository {
         errorMessage: metric.errorMessage ?? null,
       };
 
-      const { error } = await supabase
-        .from('api_request_metrics')
+      const { error } = await (supabase
+        .from('api_request_metrics') as any)
         .insert(insertData);
 
       if (error) {
@@ -152,7 +152,9 @@ class PerformanceRepositoryImpl implements PerformanceRepository {
         throw error;
       }
 
-      if (!data || data.length === 0) {
+      const metrics = (data || []) as Array<{ responseTime: number; statusCode: number }>;
+      
+      if (!metrics || metrics.length === 0) {
         return {
           total: 0,
           averageResponseTime: 0,
@@ -164,20 +166,20 @@ class PerformanceRepositoryImpl implements PerformanceRepository {
         };
       }
 
-      const total = data.length;
-      const totalResponseTime = data.reduce((sum, m) => sum + m.responseTime, 0);
+      const total = metrics.length;
+      const totalResponseTime = metrics.reduce((sum, m) => sum + m.responseTime, 0);
       const averageResponseTime = totalResponseTime / total;
 
-      const responseTimes = data.map((m) => m.responseTime).sort((a, b) => a - b);
+      const responseTimes = metrics.map((m) => m.responseTime).sort((a, b) => a - b);
       const p50 = responseTimes[Math.floor(responseTimes.length * 0.5)] || 0;
       const p95 = responseTimes[Math.floor(responseTimes.length * 0.95)] || 0;
       const p99 = responseTimes[Math.floor(responseTimes.length * 0.99)] || 0;
 
-      const errors = data.filter((m) => m.statusCode >= 400).length;
+      const errors = metrics.filter((m) => m.statusCode >= 400).length;
       const errorRate = (errors / total) * 100;
 
       const statusCodes: Record<number, number> = {};
-      data.forEach((m) => {
+      metrics.forEach((m) => {
         statusCodes[m.statusCode] = (statusCodes[m.statusCode] || 0) + 1;
       });
 

@@ -45,10 +45,13 @@ export default function Home() {
 
   // Request notification permission when alerts are enabled
   useEffect(() => {
-    const preferences = loadPreferences();
-    if (preferences.alerts.enabled && 'Notification' in window && Notification.permission === 'default') {
-      requestNotificationPermission().catch(console.error);
-    }
+    const checkAlerts = async () => {
+      const preferences = await loadPreferences();
+      if (preferences.alerts.enabled && 'Notification' in window && Notification.permission === 'default') {
+        requestNotificationPermission().catch(console.error);
+      }
+    };
+    checkAlerts();
   }, []);
 
   // Reset stations when line changes if not already set

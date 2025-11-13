@@ -5,7 +5,7 @@
 
 import { getSupabaseAdminClient } from '../supabaseAdmin';
 import { logger } from '../logger';
-import type { Database } from '@/supabase/types';
+import type { Database, Json } from '@/supabase/types';
 import type { ScheduleConfig, AlertPreferences } from '@/lib/utils/favorites';
 
 type User = Database['public']['Tables']['users']['Row'];
@@ -31,20 +31,21 @@ class PreferencesRepositoryImpl implements PreferencesRepository {
       const supabase = getSupabaseAdminClient();
       
       // Try to find existing user
-      const { data: existingUser, error: findError } = await supabase
-        .from('users')
+      const { data: existingUser, error: findError } = await (supabase
+        .from('users') as any)
         .select('id, userId')
         .eq('userId', userId)
         .single();
 
       if (existingUser && !findError) {
-        return { id: existingUser.id, userId: existingUser.userId };
+        const user = existingUser as { id: string; userId: string };
+        return { id: user.id, userId: user.userId };
       }
 
       // Create if doesn't exist
       const insertData: UserInsert = { userId };
-      const { data: newUser, error: createError } = await supabase
-        .from('users')
+      const { data: newUser, error: createError } = await (supabase
+        .from('users') as any)
         .insert(insertData)
         .select('id, userId')
         .single();
@@ -54,7 +55,8 @@ class PreferencesRepositoryImpl implements PreferencesRepository {
       }
 
       logger.debug('Created new user', { userId });
-      return { id: newUser.id, userId: newUser.userId };
+      const user = newUser as { id: string; userId: string };
+      return { id: user.id, userId: user.userId };
     } catch (error) {
       logger.error('Failed to get or create user', {
         error: error instanceof Error ? error.message : String(error),
@@ -67,8 +69,8 @@ class PreferencesRepositoryImpl implements PreferencesRepository {
   async getUserPreferences(userInternalId: string): Promise<AlertPreferences | null> {
     try {
       const supabase = getSupabaseAdminClient();
-      const { data, error } = await supabase
-        .from('user_preferences')
+      const { data, error } = await (supabase
+        .from('user_preferences') as any)
         .select('*')
         .eq('userInternalId', userInternalId)
         .single();
@@ -85,12 +87,20 @@ class PreferencesRepositoryImpl implements PreferencesRepository {
         return null;
       }
 
+      const prefs = data as {
+        alertsEnabled: boolean;
+        notifyOnDelay: boolean;
+        notifyOnCancellation: boolean;
+        notifyOnApproaching: boolean;
+        approachingMinutes: number;
+      };
+
       return {
-        enabled: data.alertsEnabled,
-        notifyOnDelay: data.notifyOnDelay,
-        notifyOnCancellation: data.notifyOnCancellation,
-        notifyOnApproaching: data.notifyOnApproaching,
-        approachingMinutes: data.approachingMinutes,
+        enabled: prefs.alertsEnabled,
+        notifyOnDelay: prefs.notifyOnDelay,
+        notifyOnCancellation: prefs.notifyOnCancellation,
+        notifyOnApproaching: prefs.notifyOnApproaching,
+        approachingMinutes: prefs.approachingMinutes,
       };
     } catch (error) {
       logger.error('Failed to get user preferences', {
@@ -122,8 +132,8 @@ class PreferencesRepositoryImpl implements PreferencesRepository {
           approachingMinutes: preferences.approachingMinutes ?? 5,
         };
 
-        const { data, error } = await supabase
-          .from('user_preferences')
+        const { data, error } = await (supabase
+          .from('user_preferences') as any)
           .insert(insertData)
           .select()
           .single();
@@ -132,12 +142,20 @@ class PreferencesRepositoryImpl implements PreferencesRepository {
           throw error || new Error('Failed to create user preferences');
         }
 
+        const prefs = data as {
+          alertsEnabled: boolean;
+          notifyOnDelay: boolean;
+          notifyOnCancellation: boolean;
+          notifyOnApproaching: boolean;
+          approachingMinutes: number;
+        };
+
         return {
-          enabled: data.alertsEnabled,
-          notifyOnDelay: data.notifyOnDelay,
-          notifyOnCancellation: data.notifyOnCancellation,
-          notifyOnApproaching: data.notifyOnApproaching,
-          approachingMinutes: data.approachingMinutes,
+          enabled: prefs.alertsEnabled,
+          notifyOnDelay: prefs.notifyOnDelay,
+          notifyOnCancellation: prefs.notifyOnCancellation,
+          notifyOnApproaching: prefs.notifyOnApproaching,
+          approachingMinutes: prefs.approachingMinutes,
         };
       }
 
@@ -150,8 +168,8 @@ class PreferencesRepositoryImpl implements PreferencesRepository {
         approachingMinutes: preferences.approachingMinutes ?? existing.approachingMinutes,
       };
 
-      const { data, error } = await supabase
-        .from('user_preferences')
+      const { data, error } = await (supabase
+        .from('user_preferences') as any)
         .update(updateData)
         .eq('userInternalId', userInternalId)
         .select()
@@ -161,12 +179,20 @@ class PreferencesRepositoryImpl implements PreferencesRepository {
         throw error || new Error('Failed to update user preferences');
       }
 
+      const prefs = data as {
+        alertsEnabled: boolean;
+        notifyOnDelay: boolean;
+        notifyOnCancellation: boolean;
+        notifyOnApproaching: boolean;
+        approachingMinutes: number;
+      };
+
       return {
-        enabled: data.alertsEnabled,
-        notifyOnDelay: data.notifyOnDelay,
-        notifyOnCancellation: data.notifyOnCancellation,
-        notifyOnApproaching: data.notifyOnApproaching,
-        approachingMinutes: data.approachingMinutes,
+        enabled: prefs.alertsEnabled,
+        notifyOnDelay: prefs.notifyOnDelay,
+        notifyOnCancellation: prefs.notifyOnCancellation,
+        notifyOnApproaching: prefs.notifyOnApproaching,
+        approachingMinutes: prefs.approachingMinutes,
       };
     } catch (error) {
       logger.error('Failed to update user preferences', {
@@ -180,8 +206,8 @@ class PreferencesRepositoryImpl implements PreferencesRepository {
   async getScheduleConfigs(userInternalId: string): Promise<ScheduleConfig[]> {
     try {
       const supabase = getSupabaseAdminClient();
-      const { data, error } = await supabase
-        .from('schedule_configs')
+      const { data, error } = await (supabase
+        .from('schedule_configs') as any)
         .select('*')
         .eq('userInternalId', userInternalId)
         .order('createdAt', { ascending: false });
@@ -190,7 +216,8 @@ class PreferencesRepositoryImpl implements PreferencesRepository {
         throw error;
       }
 
-      return (data || []).map((config) => this.mapScheduleConfigFromDb(config));
+      const configs = (data || []) as any[];
+      return configs.map((config) => this.mapScheduleConfigFromDb(config));
     } catch (error) {
       logger.error('Failed to get schedule configs', {
         error: error instanceof Error ? error.message : String(error),
@@ -210,7 +237,7 @@ class PreferencesRepositoryImpl implements PreferencesRepository {
         userInternalId,
         name: config.name,
         line: config.line,
-        selectedStations: config.selectedStations as unknown as Record<string, unknown>,
+        selectedStations: config.selectedStations as unknown as Json,
         direction: config.direction,
         selectedStation: config.filters.selectedStation || null,
         routeFilter: config.filters.routeFilter,
@@ -218,8 +245,8 @@ class PreferencesRepositoryImpl implements PreferencesRepository {
         sortDirection: config.filters.sortDirection,
       };
 
-      const { data, error } = await supabase
-        .from('schedule_configs')
+      const { data, error } = await (supabase
+        .from('schedule_configs') as any)
         .insert(insertData)
         .select()
         .single();

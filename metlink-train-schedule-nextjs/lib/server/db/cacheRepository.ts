@@ -5,7 +5,7 @@
 
 import { getSupabaseAdminClient } from '../supabaseAdmin';
 import { logger } from '../logger';
-import type { Database } from '@/supabase/types';
+import type { Database, Json } from '@/supabase/types';
 import type { DeparturesResponse } from '@/types';
 
 type CacheEntry = Database['public']['Tables']['cache_entries']['Row'];
@@ -43,12 +43,18 @@ class CacheRepositoryImpl implements CacheRepository {
         return null;
       }
 
-      // Check if expired
-      if (new Date(data.expiresAt) <= new Date()) {
+      // Type assertion for Supabase query result
+      const entry = data as { data: Json; expiresAt: string } | null;
+      if (!entry) {
         return null;
       }
 
-      return data.data as DeparturesResponse;
+      // Check if expired
+      if (new Date(entry.expiresAt) <= new Date()) {
+        return null;
+      }
+
+      return entry.data as unknown as DeparturesResponse;
     } catch (error) {
       logger.warn('Cache repository get failed', {
         error: error instanceof Error ? error.message : String(error),
@@ -63,13 +69,13 @@ class CacheRepositoryImpl implements CacheRepository {
       const supabase = getSupabaseAdminClient();
       const entry: CacheEntryInsert = {
         key,
-        data: data as unknown as Record<string, unknown>,
+        data: data as unknown as Json,
         timestamp: new Date().toISOString(),
         expiresAt: expiresAt.toISOString(),
       };
 
-      const { error } = await supabase
-        .from('cache_entries')
+      const { error } = await (supabase
+        .from('cache_entries') as any)
         .upsert(entry, {
           onConflict: 'key',
         });
@@ -183,7 +189,13 @@ class CacheRepositoryImpl implements CacheRepository {
         return null;
       }
 
-      const ageMs = Date.now() - new Date(data.timestamp).getTime();
+      // Type assertion for Supabase query result
+      const entry = data as { timestamp: string } | null;
+      if (!entry) {
+        return null;
+      }
+
+      const ageMs = Date.now() - new Date(entry.timestamp).getTime();
       return Math.round(ageMs / 1000); // Return age in seconds
     } catch (error) {
       logger.warn('Cache repository getAge failed', {

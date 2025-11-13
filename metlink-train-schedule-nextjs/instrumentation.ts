@@ -12,7 +12,8 @@ export async function register() {
     // Log that instrumentation is running
     console.log('[Instrumentation] Server-side instrumentation initialized');
     
-    // Initialize Supabase connection if available
+    // Initialize Supabase connection if available (non-blocking)
+    // Wrap in try-catch to prevent build failures
     try {
       const { isSupabaseAvailable } = await import('./lib/server/supabaseAdmin');
       const available = await isSupabaseAvailable();
@@ -22,7 +23,10 @@ export async function register() {
         console.log('[Instrumentation] Supabase not available, using in-memory cache');
       }
     } catch (error) {
-      console.warn('[Instrumentation] Failed to initialize Supabase:', error);
+      // Silently fail during build - Supabase might not be configured yet
+      // Extract error message safely to avoid serialization issues
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.warn('[Instrumentation] Failed to initialize Supabase:', errorMessage);
     }
   }
   

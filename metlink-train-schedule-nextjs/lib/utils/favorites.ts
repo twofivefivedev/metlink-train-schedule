@@ -204,6 +204,14 @@ async function loadPreferencesFromDb(userId: string): Promise<UserPreferences> {
 }
 
 /**
+ * Load preferences from localStorage (synchronous)
+ * Use this in components when you need immediate access to preferences
+ */
+export function loadPreferencesSync(): UserPreferences {
+  return loadPreferencesFromStorage();
+}
+
+/**
  * Load preferences from localStorage
  */
 function loadPreferencesFromStorage(): UserPreferences {
@@ -408,17 +416,18 @@ export function addScheduleConfig(config: Omit<ScheduleConfig, 'id' | 'createdAt
     });
   }
 
-  // Sync case
+  // Sync case - use loadPreferencesSync to ensure we get synchronous result
+  const syncPrefs = loadPreferencesSync();
   const newConfig: ScheduleConfig = {
     ...config,
     id: `config-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     createdAt: new Date().toISOString(),
   };
 
-  preferences.configs.push(newConfig);
+  syncPrefs.configs.push(newConfig);
   
   // Always save to localStorage first (with client-generated ID)
-  savePreferences(preferences);
+  savePreferences(syncPrefs);
   
   // Try to save to database and sync ID back
   if (shouldUseDatabase()) {
@@ -441,10 +450,10 @@ export function addScheduleConfig(config: Omit<ScheduleConfig, 'id' | 'createdAt
             if (result.success && result.data?.config) {
               // Update config with database-generated ID
               const dbConfig = result.data.config;
-              const index = preferences.configs.findIndex(c => c.id === newConfig.id);
+              const index = syncPrefs.configs.findIndex(c => c.id === newConfig.id);
               if (index !== -1) {
-                preferences.configs[index] = dbConfig;
-  savePreferences(preferences);
+                syncPrefs.configs[index] = dbConfig;
+                savePreferences(syncPrefs);
               }
               markDatabaseAvailable();
             }
@@ -471,8 +480,9 @@ export function removeScheduleConfig(configId: string): void | Promise<void> {
     });
   }
 
-  // Sync case
-  preferences.configs = preferences.configs.filter(c => c.id !== configId);
+  // Sync case - use loadPreferencesSync to ensure we get synchronous result
+  const syncPrefs = loadPreferencesSync();
+  syncPrefs.configs = syncPrefs.configs.filter(c => c.id !== configId);
   
   // Try to remove from database first
   if (shouldUseDatabase()) {
@@ -494,30 +504,59 @@ export function removeScheduleConfig(configId: string): void | Promise<void> {
   }
   
   // Always save to localStorage
-  savePreferences(preferences);
+  savePreferences(syncPrefs);
 }
 
 /**
  * Update a schedule configuration
  */
-export function updateScheduleConfig(configId: string, updates: Partial<ScheduleConfig>): void {
+export async function updateScheduleConfig(configId: string, updates: Partial<ScheduleConfig>): Promise<void>;
+export function updateScheduleConfig(configId: string, updates: Partial<ScheduleConfig>): void;
+export function updateScheduleConfig(configId: string, updates: Partial<ScheduleConfig>): void | Promise<void> {
   const preferences = loadPreferences();
-  const index = preferences.configs.findIndex(c => c.id === configId);
+  
+  // Handle async case
+  if (preferences instanceof Promise) {
+    return preferences.then((prefs) => {
+      const index = prefs.configs.findIndex(c => c.id === configId);
+      if (index !== -1) {
+        prefs.configs[index] = {
+          ...prefs.configs[index],
+          ...updates,
+        };
+        return savePreferences(prefs);
+      }
+    });
+  }
+  
+  // Sync case - use loadPreferencesSync to ensure we get synchronous result
+  const syncPrefs = loadPreferencesSync();
+  const index = syncPrefs.configs.findIndex(c => c.id === configId);
   if (index !== -1) {
-    preferences.configs[index] = {
-      ...preferences.configs[index],
+    syncPrefs.configs[index] = {
+      ...syncPrefs.configs[index],
       ...updates,
     };
-    savePreferences(preferences);
+    savePreferences(syncPrefs);
   }
 }
 
 /**
  * Get a schedule configuration by ID
  */
-export function getScheduleConfig(configId: string): ScheduleConfig | null {
+export async function getScheduleConfig(configId: string): Promise<ScheduleConfig | null>;
+export function getScheduleConfig(configId: string): ScheduleConfig | null;
+export function getScheduleConfig(configId: string): ScheduleConfig | null | Promise<ScheduleConfig | null> {
   const preferences = loadPreferences();
-  return preferences.configs.find(c => c.id === configId) || null;
+  
+  // Handle async case
+  if (preferences instanceof Promise) {
+    return preferences.then((prefs) => prefs.configs.find(c => c.id === configId) || null);
+  }
+  
+  // Sync case - use loadPreferencesSync to ensure we get synchronous result
+  const syncPrefs = loadPreferencesSync();
+  return syncPrefs.configs.find(c => c.id === configId) || null;
 }
 
 // Legacy functions for backward compatibility (deprecated)
@@ -526,7 +565,7 @@ export function getScheduleConfig(configId: string): ScheduleConfig | null {
  * @deprecated Use addScheduleConfig instead
  */
 export function addFavorite(favorite: Omit<FavoriteRoute, 'id' | 'createdAt'>): void {
-  const preferences = loadPreferences();
+  const preferences = loadPreferencesSync();
   const newFavorite: FavoriteRoute = {
     ...favorite,
     id: `${favorite.station}-${favorite.direction}-${favorite.line}-${Date.now()}`,
@@ -551,7 +590,7 @@ export function addFavorite(favorite: Omit<FavoriteRoute, 'id' | 'createdAt'>): 
  * @deprecated Use removeScheduleConfig instead
  */
 export function removeFavorite(favoriteId: string): void {
-  const preferences = loadPreferences();
+  const preferences = loadPreferencesSync();
   preferences.favorites = preferences.favorites.filter(f => f.id !== favoriteId);
   savePreferences(preferences);
 }
@@ -565,7 +604,7 @@ export function isFavorite(
   direction: 'inbound' | 'outbound',
   line: string
 ): boolean {
-  const preferences = loadPreferences();
+  const preferences = loadPreferencesSync();
   return preferences.favorites.some(
     f => f.station === station &&
          f.direction === direction &&
@@ -592,9 +631,10 @@ export function updateAlertPreferences(alerts: Partial<AlertPreferences>): void 
     });
   }
 
-  // Sync case
-  preferences.alerts = {
-    ...preferences.alerts,
+  // Sync case - use loadPreferencesSync to ensure we get synchronous result
+  const syncPrefs = loadPreferencesSync();
+  syncPrefs.alerts = {
+    ...syncPrefs.alerts,
     ...alerts,
   };
   
@@ -610,13 +650,13 @@ export function updateAlertPreferences(alerts: Partial<AlertPreferences>): void 
         },
         body: JSON.stringify({
           userId,
-          alerts: preferences.alerts,
+          alerts: syncPrefs.alerts,
         }),
       }).then(() => markDatabaseAvailable()).catch(() => markDatabaseUnavailable());
     }
   }
   
   // Always save to localStorage
-  savePreferences(preferences);
+  savePreferences(syncPrefs);
 }
 
