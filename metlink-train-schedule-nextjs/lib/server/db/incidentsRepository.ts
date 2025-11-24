@@ -12,6 +12,13 @@ type ServiceIncidentInsert = Database['public']['Tables']['service_incidents']['
 
 export type IncidentType = 'cancelled' | 'delayed' | 'bus_replacement';
 
+type IncidentsSummaryRow = {
+  total: number | null;
+  cancelled: number | null;
+  delayed: number | null;
+  bus_replacement: number | null;
+};
+
 export interface ServiceIncidentRecord {
   serviceId: string;
   stopId: string;
@@ -63,14 +70,19 @@ class IncidentsRepositoryImpl implements IncidentsRepository {
   } | null> {
     try {
       const supabase = getSupabaseAdminClient();
-      const { data, error } = await supabase.rpc('get_incidents_summary', {
+      const { data, error } = await (supabase as typeof supabase & {
+        rpc: <T>(
+          fn: string,
+          args?: Record<string, unknown>
+        ) => Promise<{ data: T | null; error: { message?: string } | null }>
+      }).rpc<IncidentsSummaryRow[]>('get_incidents_summary', {
         service_id_filter: options.serviceId ?? null,
         start_time: options.startDate?.toISOString() ?? null,
         end_time: options.endDate?.toISOString() ?? null,
       });
 
       if (error || !data) {
-        if (error && !error.message.toLowerCase().includes('function')) {
+        if (error?.message && !error.message.toLowerCase().includes('function')) {
           logger.warn('Incidents summary RPC failed', {
             error: error.message,
             serviceId: options.serviceId ?? 'all',
@@ -84,7 +96,7 @@ class IncidentsRepositoryImpl implements IncidentsRepository {
         return null;
       }
 
-      const cancelled = aggregate.cancelled ?? aggregate.canceled ?? 0;
+      const cancelled = aggregate.cancelled ?? 0;
       const delayed = aggregate.delayed ?? 0;
       const busReplacement = aggregate.bus_replacement ?? 0;
       const total =

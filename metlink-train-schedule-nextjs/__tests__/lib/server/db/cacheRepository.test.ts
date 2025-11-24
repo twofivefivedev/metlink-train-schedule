@@ -13,7 +13,7 @@ jest.mock('@/lib/server/supabaseAdmin', () => ({
 }));
 
 describe('CacheRepository', () => {
-  const mockSupabase = {
+  const mockSupabase: Record<string, any> = {
     from: jest.fn(),
   };
 
@@ -162,4 +162,6 @@ describe('CacheRepository', () => {
     });
   });
 });
+
+
 

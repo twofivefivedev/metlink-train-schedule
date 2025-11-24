@@ -14,14 +14,24 @@ type ApiRequestMetricInsert = Database['public']['Tables']['api_request_metrics'
 
 interface PerformanceAggregate {
   total?: number;
-  average_response_time?: number;
-  avg_response_time?: number;
+  averageResponseTime?: number;
   p50?: number;
   p95?: number;
   p99?: number;
-  error_rate?: number;
-  status_codes?: Record<number, number>;
+  errorRate?: number;
+  statusCodes?: Record<number, number>;
 }
+
+type PerformanceAggregateRow = {
+  total: number | null;
+  average_response_time: number | null;
+  avg_response_time?: number | null;
+  p50: number | null;
+  p95: number | null;
+  p99: number | null;
+  error_rate: number | null;
+  status_codes: Record<number, number> | null;
+};
 
 export interface PerformanceRepository {
   insertPerformanceMetric(metric: {
@@ -72,14 +82,19 @@ class PerformanceRepositoryImpl implements PerformanceRepository {
   } | null> {
     try {
       const supabase = getSupabaseAdminClient();
-      const { data, error } = await supabase.rpc('get_performance_stats', {
+      const { data, error } = await (supabase as typeof supabase & {
+        rpc: <T>(
+          fn: string,
+          args?: Record<string, unknown>
+        ) => Promise<{ data: T | null; error: { message?: string } | null }>
+      }).rpc<PerformanceAggregateRow[]>('get_performance_stats', {
         endpoint_filter: options.endpoint ?? null,
         start_time: options.startDate?.toISOString() ?? null,
         end_time: options.endDate?.toISOString() ?? null,
       });
 
       if (error || !data) {
-        if (error && !error.message.toLowerCase().includes('function')) {
+        if (error?.message && !error.message.toLowerCase().includes('function')) {
           logger.warn('Performance stats RPC failed', {
             error: error.message,
             endpoint: options.endpoint ?? 'all',
@@ -88,21 +103,21 @@ class PerformanceRepositoryImpl implements PerformanceRepository {
         return null;
       }
 
-      const aggregate: PerformanceAggregate | undefined = Array.isArray(data) ? data[0] : data;
-      if (!aggregate) {
+      const aggregateRow: PerformanceAggregateRow | undefined = Array.isArray(data) ? data[0] : data;
+      if (!aggregateRow) {
         return null;
       }
 
       return {
-        total: aggregate.total ?? 0,
+        total: aggregateRow.total ?? 0,
         averageResponseTime: Math.round(
-          aggregate.average_response_time ?? aggregate.avg_response_time ?? 0
+          aggregateRow.average_response_time ?? aggregateRow.avg_response_time ?? 0
         ),
-        p50: Math.round(aggregate.p50 ?? 0),
-        p95: Math.round(aggregate.p95 ?? 0),
-        p99: Math.round(aggregate.p99 ?? 0),
-        errorRate: Math.round((aggregate.error_rate ?? 0) * 10) / 10,
-        statusCodes: aggregate.status_codes ?? {},
+        p50: Math.round(aggregateRow.p50 ?? 0),
+        p95: Math.round(aggregateRow.p95 ?? 0),
+        p99: Math.round(aggregateRow.p99 ?? 0),
+        errorRate: Math.round((aggregateRow.error_rate ?? 0) * 10) / 10,
+        statusCodes: aggregateRow.status_codes ?? {},
       };
     } catch (error) {
       logger.debug('Performance stats RPC unavailable, falling back to query', {
