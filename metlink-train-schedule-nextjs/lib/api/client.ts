@@ -3,7 +3,7 @@
  * Handles all API communication with the backend
  */
 
-import { getApiBaseUrl, shouldUseMockData } from '@/lib/config/env';
+import { env, getApiBaseUrl, shouldUseMockData } from '@/lib/config/env';
 import type { ApiResponse, DeparturesResponse, StationDeparturesResponse } from '@/types';
 import {
   getLineDeparturesMock,
@@ -12,6 +12,41 @@ import {
 } from './mockClient';
 
 const API_BASE = getApiBaseUrl();
+const REQUEST_TIMEOUT_MS = Number.isFinite(env.API_TIMEOUT_MS)
+  ? Number(env.API_TIMEOUT_MS)
+  : 10_000;
+
+function createTimeoutController(signal?: AbortSignal) {
+  if (typeof AbortController === 'undefined') {
+    return { signal, cleanup: () => {} };
+  }
+
+  const controller = new AbortController();
+
+  const timeoutId = setTimeout(() => {
+    controller.abort(new Error(`Request timed out after ${REQUEST_TIMEOUT_MS}ms`));
+  }, REQUEST_TIMEOUT_MS);
+
+  const abortWithSignal = () => controller.abort(signal?.reason ?? new DOMException('Aborted'));
+
+  if (signal) {
+    if (signal.aborted) {
+      abortWithSignal();
+    } else {
+      signal.addEventListener('abort', abortWithSignal, { once: true });
+    }
+  }
+
+  return {
+    signal: controller.signal as AbortSignal,
+    cleanup: () => {
+      clearTimeout(timeoutId);
+      if (signal) {
+        signal.removeEventListener('abort', abortWithSignal);
+      }
+    },
+  };
+}
 
 /**
  * Fetch data from API with retry logic
@@ -28,13 +63,25 @@ async function fetchWithRetry<T>(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const response = await fetch(url, {
-        ...options,
+      const { signal: userSignal, ...requestOptions } = options;
+      const { signal, cleanup } = createTimeoutController(
+        (userSignal as AbortSignal | undefined) ?? undefined
+      );
+      const fetchOptions: RequestInit = {
+        ...requestOptions,
+        signal: signal ?? (userSignal ?? undefined),
         headers: {
           'Content-Type': 'application/json',
-          ...options.headers,
+          ...(requestOptions.headers || {}),
         },
-      });
+      };
+
+      let response: Response;
+      try {
+        response = await fetch(url, fetchOptions);
+      } finally {
+        cleanup();
+      }
 
       let data: ApiResponse<T>;
       try {
@@ -57,8 +104,26 @@ async function fetchWithRetry<T>(
         throw new Error(data.error?.message || 'API returned error');
       }
 
+      const cacheTimestamp = response.headers.get('x-metlink-cache-timestamp');
+      const cacheStatus = response.headers.get('x-metlink-cache-status');
+      if (cacheTimestamp || cacheStatus) {
+        const meta: Record<string, unknown> = {
+          ...(data.meta ?? {}),
+          ...(cacheTimestamp ? { cachedAt: cacheTimestamp } : {}),
+          ...(cacheStatus ? { cacheStatus } : {}),
+        };
+        data.meta = meta;
+      }
+
       return data;
     } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.name === 'AbortError' || error.message.includes('timed out'))
+      ) {
+        throw new Error(`Request timed out after ${REQUEST_TIMEOUT_MS}ms`);
+      }
+
       if (attempt === maxRetries) {
         throw error;
       }

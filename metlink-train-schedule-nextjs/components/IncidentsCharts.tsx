@@ -87,3 +87,4 @@ export function IncidentsBarChart({ data }: { data: BarDatum[] }) {
   );
 }
 
+

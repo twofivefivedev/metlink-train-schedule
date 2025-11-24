@@ -8,6 +8,10 @@ import { SERVICE_IDS, getStationPlatformVariants } from '@/lib/constants';
 import { getMetlinkApiBase, env } from '@/lib/config/env';
 import { retry } from './retry';
 import { logger } from './logger';
+import { metlinkCircuitBreaker, CircuitBreakerOpenError } from './circuitBreaker';
+import { sanitizeMetlinkDepartures } from './validation/schemas';
+import type { RequestContext } from './requestContext';
+import { withRequestContext } from './requestContext';
 import type { Departure, MetlinkApiResponse } from '@/types';
 
 const parsedPlatformTtl = process.env.PLATFORM_CACHE_TTL_MS
@@ -160,8 +164,12 @@ function getMetlinkClient(): AxiosInstance {
 /**
  * Get stop predictions for a specific station
  */
-export async function getStopPredictions(stopId: string): Promise<MetlinkApiResponse> {
+export async function getStopPredictions(stopId: string, context?: RequestContext): Promise<MetlinkApiResponse> {
   try {
+    if (!metlinkCircuitBreaker.canRequest()) {
+      throw new CircuitBreakerOpenError();
+    }
+
     // Track API request
     requestMetrics.increment();
     
@@ -181,7 +189,9 @@ export async function getStopPredictions(stopId: string): Promise<MetlinkApiResp
       }
     );
 
-    logger.debug(`Fetched stop predictions for ${stopId}`, {
+    metlinkCircuitBreaker.recordSuccess();
+
+    logger.debug(`Fetched stop predictions for ${stopId}`, withRequestContext({
       requestCount: requestMetrics.getCount(),
       requestsThisHour: requestMetrics.getCurrentHourCount(),
       departuresCount: response.data.departures?.length || 0,
@@ -193,17 +203,20 @@ export async function getStopPredictions(stopId: string): Promise<MetlinkApiResp
         expected: response.data.departures[0].departure?.expected,
         status: (response.data.departures[0] as unknown as { status?: string }).status,
       } : null,
-    });
+    }, context));
 
-    return response.data;
+    return {
+      departures: sanitizeMetlinkDepartures(response.data),
+    };
   } catch (error) {
+    metlinkCircuitBreaker.recordFailure();
     const errorObj = error as Error;
-    logger.error(`Failed to fetch stop predictions for ${stopId}`, {
+    logger.error(`Failed to fetch stop predictions for ${stopId}`, withRequestContext({
       error: errorObj.message,
       name: errorObj.name,
       stack: errorObj.stack,
       stopId,
-    });
+    }, context));
     throw error;
   }
 }
@@ -221,13 +234,14 @@ export function getRequestMetrics() {
  */
 export async function getWairarapaDepartures(
   stopId: string,
-  serviceId: string = SERVICE_IDS.WAIRARAPA_LINE
+  serviceId: string = SERVICE_IDS.WAIRARAPA_LINE,
+  context?: RequestContext
 ): Promise<Departure[]> {
   try {
     const cacheKey = `${serviceId}-${stopId}`;
     const cached = stationDeparturesCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
-      logger.debug('Station cache hit', { stopId, serviceId });
+      logger.debug('Station cache hit', withRequestContext({ stopId, serviceId }, context));
       return cached.departures.map((departure) => ({ ...departure }));
     }
 
@@ -238,7 +252,7 @@ export async function getWairarapaDepartures(
     // Try each platform variant and collect all departures
     for (const platformId of platformVariants) {
       try {
-        const data = await getStopPredictions(platformId);
+        const data = await getStopPredictions(platformId, context);
     const departures = data.departures || [];
         allDepartures = allDepartures.concat(departures);
         if (allDepartures.length > 0) {
@@ -246,7 +260,10 @@ export async function getWairarapaDepartures(
         }
       } catch (error) {
         // If a platform variant fails, continue with others
-        logger.debug(`Failed to fetch predictions for platform ${platformId}, trying next variant`);
+        logger.debug(
+          `Failed to fetch predictions for platform ${platformId}, trying next variant`,
+          withRequestContext({ stopId, serviceId, platformId }, context)
+        );
       }
     }
 
@@ -264,7 +281,7 @@ export async function getWairarapaDepartures(
       )
     );
 
-    logger.debug(`Fetched ${uniqueDepartures.length} departures for ${stopId} (service: ${serviceId})`, {
+    logger.debug(`Fetched ${uniqueDepartures.length} departures for ${stopId} (service: ${serviceId})`, withRequestContext({
       total: allDepartures.length,
       filtered: filtered.length,
       unique: uniqueDepartures.length,
@@ -276,7 +293,7 @@ export async function getWairarapaDepartures(
         expected: dep.departure?.expected,
         status: (dep as unknown as { status?: string }).status,
       })),
-    });
+    }, context));
 
     stationDeparturesCache.set(cacheKey, {
       departures: uniqueDepartures,
@@ -285,7 +302,11 @@ export async function getWairarapaDepartures(
 
     return uniqueDepartures.map((departure) => ({ ...departure }));
   } catch (error) {
-    logger.error(`Failed to fetch departures for ${stopId}`, error as Error);
+    logger.error(`Failed to fetch departures for ${stopId}`, withRequestContext({
+      error: error instanceof Error ? error.message : String(error),
+      stopId,
+      serviceId,
+    }, context));
     throw error;
   }
 }
@@ -295,29 +316,39 @@ export async function getWairarapaDepartures(
  */
 export async function getMultipleStationDepartures(
   stopIds: string[],
-  serviceId: string = SERVICE_IDS.WAIRARAPA_LINE
+  serviceId: string = SERVICE_IDS.WAIRARAPA_LINE,
+  context?: RequestContext
 ): Promise<Departure[][]> {
   const promises = stopIds.map((stopId) =>
     stationFetchLimiter.run(async () => {
     try {
-      const departures = await getWairarapaDepartures(stopId, serviceId);
+        const departures = await getWairarapaDepartures(stopId, serviceId, context);
       return departures.map(departure => ({
         ...departure,
         station: stopId,
       }));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      const errorDetails = error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack,
-      } : { error: String(error) };
-      
-      logger.warn(`Failed to fetch departures for station ${stopId}`, {
-        ...errorDetails,
-        station: stopId,
-        serviceId,
-      });
+        const errorDetails =
+          error instanceof Error
+            ? {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+              }
+            : { error: String(error) };
+
+        logger.warn(
+          `Failed to fetch departures for station ${stopId}`,
+          withRequestContext(
+            {
+              ...errorDetails,
+              station: stopId,
+              serviceId,
+            },
+            context
+          )
+        );
       return []; // Return empty array on error for this station
     }
     })

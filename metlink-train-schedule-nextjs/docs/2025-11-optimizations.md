@@ -186,121 +186,35 @@ await supabase
 
 ## Reliability & Offline Behavior
 
-### 1. Polling without stale data fallback
+### 1. Polling without stale data fallback _(Done – Nov 24, 2025)_
 
-- **Current:** `useTrainSchedule` flips to a loading state on every refresh and shows errors until the next successful fetch; there’s no reuse of the previous payload or stale cache when the network fails.
+- **Change:** `useTrainSchedule` now keeps the last successful payload in memory, tracks a `staleState`, and writes the timestamp to `localStorage`, while `lib/api/client.ts` ships cache metadata from the service worker back up to the hook via response headers. `DepartureBoard` renders a cached-data banner and never clears departures during background refreshes, and `app/page.tsx` wires the new hook contract through to the UI.
+- **Result:** Riders continue seeing previously fetched departures with an explicit “using cached data” callout whenever Metlink or the network blips, and manual refreshes no longer blank the board.
 
-```51:135:hooks/useTrainSchedule.ts
-const response = await getLineDepartures(line, stations);
-...
-setDepartures({
-  inbound: response.data.inbound || [],
-  outbound: response.data.outbound || [],
-});
-...
-setError({
-  message: 'Failed to fetch train schedule. Please try again.',
-  retry: () => fetchSchedule(false),
-});
-```
+### 2. Minimal service worker coverage _(Done – Nov 24, 2025)_
 
-- **Impact:** Riders see empty boards whenever Metlink hiccups, even though we just had valid data a minute ago.
-- **Actions:** Keep the prior departures in state, surface a banner when data is stale, and use SWR-style logic (`lastUpdated` + `staleWhileRevalidate`) to prioritize continuity.
+- **Change:** `public/sw.js` now caches `/api/v1/departures` and `/api/wairarapa-departures` responses per normalized query key, stamps them with `x-metlink-cache-*` headers, and falls back to cached JSON plus an `/offline` document whenever fetches fail. `app/offline/page.tsx` explains the cached timestamp, `app/sw-register.tsx` registers the worker in production, and `app/layout.tsx` opts the entire app into the registration flow.
+- **Result:** Offline riders get the last-known departures (with their cached timestamp) instead of an empty shell, and the dedicated offline page gives clear recovery instructions.
 
-### 2. Minimal service worker coverage
+### 3. Analytics & incidents fetches as blocking UI work _(Done – Nov 24, 2025)_
 
-- **Current:** `public/sw.js` only pre-caches `/` and `/manifest.json`, skips API responses entirely, and simply falls back to `/` when offline.
+- **Change:** `/analytics` now lazy-loads `IncidentsDashboard` behind a Suspense boundary, and the dashboard itself uses dynamic `IncidentsPieChart`/`IncidentsBarChart` imports plus card-level skeletons and partial error messaging while it streams summary, recent incidents, and metrics requests in parallel.
+- **Result:** The analytics page renders immediately with placeholders, progressively fills each panel as its data arrives, and no longer fails wholesale if one fetch errors out.
 
-```4:47:public/sw.js
-const urlsToCache = ['/', '/manifest.json'];
-...
-        // Don't cache API requests, only static assets
-        if (event.request.url.includes('/api/')) {
-          return response;
-        }
-...
-        if (event.request.destination === 'document') {
-          return caches.match('/');
-        }
-```
+### 4. Circuit breaker and structured error context _(Done – Nov 24, 2025)_
 
-- **Impact:** Offline users get a blank shell with no last-known departures, undermining our “less discrepancies” goal.
-- **Actions:**
-  1. Store the latest `/api/v1/departures` payload in IndexedDB or the Cache API (tagged per line/station combo) and respond with it when the network fails.
-  2. Add a lightweight offline page that explains the cached timestamp and encourages manual refreshes when connectivity returns.
+- **Change:** Added `lib/server/circuitBreaker.ts` with an open/half-open flow around `getStopPredictions`, introduced `lib/server/requestContext.ts` + `withRequestContext` to attach `requestId`/`traceId` metadata to every log, and moved `logger` to JSON-formatted entries. `/api/v1/departures`, `/api/station/[stationId]`, and the Metlink client now emit structured logs, respect the breaker, and propagate context into downstream warnings.
+- **Result:** We stop hammering Metlink after repeated failures, each log line is correlated to a request, and `/api/health` can expose breaker status before customers notice.
 
-### 3. Analytics & incidents fetches as blocking UI work
+### 5. Monitoring and observability coverage _(Done – Nov 24, 2025)_
 
-- **Current:** `/analytics` fires three network calls on load, each waiting for full payloads; there’s no skeleton/dynamic import boundary, so failures surface as blank sections.
-- **Actions:**
-  1. Wrap `IncidentsDashboard` in suspense/dynamic import with a placeholder skeleton.
-  2. Stream analytics data via incremental rendering (first summary, then charts) so users always see partial data quickly.
+- **Change:** `lib/server/performance.ts` instruments API handlers and stores metrics through `getPerformanceRepository`, `/api/v1/departures` records cache-hit/miss latency via `recordApiRequestMetric`, `/api/health` returns Metlink request counts plus breaker snapshots, and the new `/api/metrics` route exposes percentile/error/cache-hit rollups (either through Supabase RPCs or raw table fallbacks).
+- **Result:** Ops can now chart latency percentiles, cache effectiveness, and error rates in real time, distinguish “Metlink down” vs. “Supabase slow,” and hook `/api/metrics` into Grafana/Datadog alerts.
 
-### 4. Circuit breaker and structured error context
+### 6. Data validation and sanitization _(Done – Nov 24, 2025)_
 
-- **Current:** `lib/server/metlinkService.ts` relies on retries but lacks a circuit breaker or request correlation, so repeated upstream failures keep hammering Metlink and produce terse logs.
-
-```114:189:lib/server/metlinkService.ts
-const response = await retry(
-  () => getMetlinkClient().get<MetlinkApiResponse>(`/stop-predictions?stop_id=${stopId}`),
-  {
-    shouldRetry: (error: unknown) => {
-      if (error && typeof error === 'object' && 'response' in error) {
-        const response = (error as { response?: { status?: number } }).response;
-        if (response?.status && response.status < 500) {
-          return false;
-        }
-      }
-      return true;
-    },
-  }
-);
-```
-
-- **Impact:** When Metlink returns sustained 500s, every client request continues to spawn outbound calls, and logs don’t tie failures back to user sessions for support.
-- **Actions:** Add `lib/server/circuitBreaker.ts` to short-circuit after N failures (half-open after cooldown), propagate `requestId`/`traceId` through `logger` calls, and surface breaker state to `/api/health` so we can alert before riders notice.
-
-### 5. Monitoring and observability coverage
-
-- **Current:** The health endpoint only reports cache/Supabase availability, and there’s no dedicated `/api/metrics` or alerting hook to track response percentiles/error rates in real time.
-
-```11:25:app/api/health/route.ts
-return NextResponse.json(
-  success({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    cache: cacheInfo,
-    supabase: {
-      available: supabaseAvailable,
-      usingDatabaseCache: supabaseAvailable,
-    },
-  })
-);
-```
-
-- **Impact:** Ops can’t distinguish “Metlink down” vs. “Supabase slow” vs. “rate limited,” and we lack a trigger for paging when error rates climb.
-- **Actions:** Emit structured JSON logs (`logger` -> JSON formatter with level/timestamp/requestId), add `/api/metrics` backed by Supabase rollups for response times/error rates/cache hits, and wire those metrics into monitoring (Grafana/Datadog or Vercel Analytics) with alert thresholds.
-
-### 6. Data validation and sanitization
-
-- **Current:** Aside from the station whitelist in `app/api/station/[stationId]/route.ts`, there’s no shared schema validation for API responses or user-provided station lists.
-
-```13:52:app/api/station/[stationId]/route.ts
-const { stationId } = await params;
-...
-if (!STATION_NAMES[upperStationId]) {
-  return NextResponse.json(
-    validationError('Invalid station ID', {
-      provided: stationId,
-      validStations: Object.keys(STATION_NAMES),
-    }),
-    { status: 400 }
-  );
-}
-```
-
-- **Impact:** We sanitize station IDs in one route but not in `/api/v1/departures`, and we never validate the shape of Metlink responses—unexpected fields can bubble through to the UI unhandled.
-- **Actions:** Create `lib/server/validation/schemas.ts` describing both inbound (query/body) and outbound (Metlink JSON) contracts, run them inside middleware, and reject/strip unsafe fields before persisting or caching data.
+- **Change:** Created `lib/server/validation/schemas.ts` (query Zod schemas, station parsing helpers, and `sanitizeMetlinkDepartures`), wired it through a reusable `withValidation` middleware for `/api/v1/departures` and `/api/station/[stationId]`, and sanitize upstream responses before they hit caches or clients.
+- **Result:** Oversized/invalid station lists are rejected up front, downstream code only touches normalized departures, and the cache/database never sees unexpected Metlink payloads.
 
 ---
 

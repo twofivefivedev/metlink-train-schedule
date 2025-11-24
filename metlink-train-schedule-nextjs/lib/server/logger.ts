@@ -11,13 +11,6 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   DEBUG: 3,
 };
 
-const LOG_LEVEL_NAMES: Record<number, LogLevel> = {
-  0: 'ERROR',
-  1: 'WARN',
-  2: 'INFO',
-  3: 'DEBUG',
-};
-
 const getLogLevel = (): LogLevel => {
   const envLevel = process.env.LOG_LEVEL?.toUpperCase() as LogLevel;
   return envLevel && LOG_LEVELS[envLevel] !== undefined ? envLevel : 'INFO';
@@ -25,36 +18,62 @@ const getLogLevel = (): LogLevel => {
 
 const currentLogLevel = LOG_LEVELS[getLogLevel()];
 
-function formatLog(level: LogLevel, message: string, metadata: Record<string, unknown> = {}): string {
-  const timestamp = new Date().toISOString();
-  const levelName = LOG_LEVEL_NAMES[LOG_LEVELS[level]] || level;
-  const metaStr = Object.keys(metadata).length > 0 ? ` ${JSON.stringify(metadata)}` : '';
-  return `[${timestamp}] [${levelName}] ${message}${metaStr}`;
+type LogMetadata = Record<string, unknown>;
+
+function normalizeMetadata(metadata?: Error | LogMetadata): LogMetadata {
+  if (!metadata) {
+    return {};
+  }
+
+  if (metadata instanceof Error) {
+    return {
+      error: {
+        name: metadata.name,
+        message: metadata.message,
+        stack: metadata.stack,
+      },
+    };
+  }
+
+  return metadata;
+}
+
+function formatLog(level: LogLevel, message: string, metadata: LogMetadata = {}): string {
+  const payload: LogMetadata = {
+    timestamp: new Date().toISOString(),
+    level,
+    message,
+  };
+
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value !== undefined) {
+      payload[key] = value;
+    }
+  }
+
+  return JSON.stringify(payload);
 }
 
 export const logger = {
-  error(message: string, error?: Error | Record<string, unknown>): void {
+  error(message: string, metadata?: Error | LogMetadata): void {
     if (LOG_LEVELS.ERROR <= currentLogLevel) {
-      const metadata = error instanceof Error
-        ? { message: error.message, stack: error.stack, name: error.name }
-        : error || {};
-      console.error(formatLog('ERROR', message, metadata));
+      console.error(formatLog('ERROR', message, normalizeMetadata(metadata)));
     }
   },
 
-  warn(message: string, metadata: Record<string, unknown> = {}): void {
+  warn(message: string, metadata: LogMetadata = {}): void {
     if (LOG_LEVELS.WARN <= currentLogLevel) {
       console.warn(formatLog('WARN', message, metadata));
     }
   },
 
-  info(message: string, metadata: Record<string, unknown> = {}): void {
+  info(message: string, metadata: LogMetadata = {}): void {
     if (LOG_LEVELS.INFO <= currentLogLevel) {
       console.log(formatLog('INFO', message, metadata));
     }
   },
 
-  debug(message: string, metadata: Record<string, unknown> = {}): void {
+  debug(message: string, metadata: LogMetadata = {}): void {
     if (LOG_LEVELS.DEBUG <= currentLogLevel) {
       console.log(formatLog('DEBUG', message, metadata));
     }

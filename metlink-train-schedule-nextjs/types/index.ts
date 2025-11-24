@@ -39,6 +39,9 @@ export interface ApiResponse<T> {
   meta?: {
     cached?: boolean;
     cacheAge?: string;
+    cachedAt?: string;
+    cacheStatus?: 'network' | 'stale';
+    [key: string]: unknown;
   };
 }
 

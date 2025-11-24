@@ -9,6 +9,14 @@ import { REFRESH_INTERVALS, DEFAULT_LINE } from '@/lib/constants';
 import type { Departure, ApiResponse, DeparturesResponse } from '@/types';
 import type { LineCode } from '@/lib/constants';
 
+export interface StaleState {
+  isStale: boolean;
+  since: Date | null;
+  source?: 'network' | 'cache';
+  reason?: 'offline' | 'network-error' | 'cache-fallback';
+  message?: string;
+}
+
 interface UseTrainScheduleReturn {
   departures: {
     inbound: Departure[];
@@ -22,6 +30,7 @@ interface UseTrainScheduleReturn {
     retry: () => void;
   } | null;
   lastUpdated: Date | null;
+  staleState: StaleState;
   refresh: () => void;
 }
 
@@ -47,51 +56,135 @@ export function useTrainSchedule(options: UseTrainScheduleOptions = {}): UseTrai
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const [isVisible, setIsVisible] = useState(true);
+  const hasResolvedRef = useRef(false);
+  const isOfflineRef = useRef(false);
+  const lastUpdatedRef = useRef<Date | null>(null);
+  const [staleState, setStaleState] = useState<StaleState>({
+    isStale: false,
+    since: null,
+  });
 
-  const fetchSchedule = useCallback(async (isRefresh = false) => {
-    try {
-      if (isRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-      setError(null);
-
-      const response: ApiResponse<DeparturesResponse> = await getLineDepartures(line, stations);
-      
-      if (response.data) {
-        setDepartures({
-          inbound: response.data.inbound || [],
-          outbound: response.data.outbound || [],
-        });
-        setLastUpdated(new Date());
-      }
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      setError({
-        message: 'Failed to fetch train schedule. Please try again.',
-        type: error.name,
-        retry: () => fetchSchedule(false),
-      });
-      console.error('Error fetching schedule:', err);
-      
-      // Report to Sentry in production
-      if (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_SENTRY_DSN) {
-        import('@sentry/nextjs').then((Sentry) => {
-          Sentry.captureException(error, {
-            tags: {
-              component: 'useTrainSchedule',
-            },
-          });
-        }).catch(() => {
-          // Silently fail if Sentry is not available
-        });
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+  const persistLastUpdated = useCallback((date: Date) => {
+    if (typeof window === 'undefined') {
+      return;
     }
-  }, [line, stations]);
+    try {
+      localStorage.setItem('departures:last-updated', date.toISOString());
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
+
+  const resetStaleState = useCallback(() => {
+    setStaleState({
+      isStale: false,
+      since: null,
+    });
+  }, []);
+
+  const fetchSchedule = useCallback(
+    async (background = false) => {
+      const hasResolved = hasResolvedRef.current;
+      try {
+        if (!background && !hasResolved) {
+          setLoading(true);
+        } else {
+          setRefreshing(true);
+        }
+        setError(null);
+
+        const response: ApiResponse<DeparturesResponse> = await getLineDepartures(line, stations);
+
+        if (response.data) {
+          setDepartures({
+            inbound: response.data.inbound || [],
+            outbound: response.data.outbound || [],
+          });
+
+          const resolvedAt = response.meta?.cachedAt ? new Date(response.meta.cachedAt) : new Date();
+          setLastUpdated(resolvedAt);
+          lastUpdatedRef.current = resolvedAt;
+          persistLastUpdated(resolvedAt);
+          hasResolvedRef.current = true;
+
+          if (response.meta?.cacheStatus === 'stale') {
+            setStaleState({
+              isStale: true,
+              since: resolvedAt,
+              source: 'cache',
+              reason: 'cache-fallback',
+              message: 'Showing saved departures until we reconnect to Metlink.',
+            });
+          } else {
+            resetStaleState();
+          }
+        } else if (!hasResolvedRef.current) {
+          setDepartures({ inbound: [], outbound: [] });
+        }
+      } catch (err) {
+        const normalizedError = err instanceof Error ? err : new Error(String(err));
+        const offline = typeof navigator !== 'undefined' ? !navigator.onLine : isOfflineRef.current;
+
+        if (!hasResolvedRef.current) {
+          setError({
+            message: 'Failed to fetch train schedule. Please try again.',
+            type: normalizedError.name,
+            retry: () => fetchSchedule(false),
+          });
+        } else {
+          setStaleState((previous) => ({
+            isStale: true,
+            since: previous.since || lastUpdatedRef.current || new Date(),
+            source: previous.source || 'cache',
+            reason: offline ? 'offline' : 'network-error',
+            message: offline
+              ? 'Offline — showing the last departures we saved. We will update automatically once you are back online.'
+              : 'Unable to reach Metlink — showing the last departures we saved.',
+          }));
+        }
+
+        console.error('Error fetching schedule:', err);
+
+        if (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_SENTRY_DSN) {
+          import('@sentry/nextjs')
+            .then((Sentry) => {
+              Sentry.captureException(normalizedError, {
+                tags: {
+                  component: 'useTrainSchedule',
+                },
+              });
+            })
+            .catch(() => {
+              // Silently fail if Sentry is not available
+            });
+        }
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [line, stations, persistLastUpdated, resetStaleState]
+  );
+
+  // Keep offline state in sync so we can describe stale reasons accurately.
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const syncStatus = () => {
+      isOfflineRef.current = !navigator.onLine;
+    };
+
+    syncStatus();
+    window.addEventListener('online', syncStatus);
+    window.addEventListener('offline', syncStatus);
+
+    return () => {
+      window.removeEventListener('online', syncStatus);
+      window.removeEventListener('offline', syncStatus);
+    };
+  }, []);
 
   // Handle visibility change to pause polling when tab is hidden
   useEffect(() => {
@@ -119,12 +212,12 @@ export function useTrainSchedule(options: UseTrainScheduleOptions = {}): UseTrai
       }
       
       // Start polling - will only execute when tab is visible
-    intervalRef.current = setInterval(() => {
+      intervalRef.current = setInterval(() => {
         // Only poll if tab is visible
         if (isVisible) {
-      fetchSchedule(true);
+          fetchSchedule(true);
         }
-    }, REFRESH_INTERVALS.DEFAULT);
+      }, REFRESH_INTERVALS.DEFAULT);
     }
 
     return () => {
@@ -132,7 +225,7 @@ export function useTrainSchedule(options: UseTrainScheduleOptions = {}): UseTrai
         clearInterval(intervalRef.current);
       }
     };
-  }, [fetchSchedule, line, stations, autoRefresh, isVisible]);
+  }, [fetchSchedule, autoRefresh, isVisible]);
 
   return {
     departures,
@@ -140,7 +233,8 @@ export function useTrainSchedule(options: UseTrainScheduleOptions = {}): UseTrai
     refreshing,
     error,
     lastUpdated,
-    refresh: () => fetchSchedule(false),
+    staleState,
+    refresh: () => fetchSchedule(true),
   };
 }
 

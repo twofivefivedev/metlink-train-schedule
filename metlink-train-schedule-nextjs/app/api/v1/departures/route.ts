@@ -13,8 +13,18 @@ import { success } from '@/lib/server/response';
 import { logger } from '@/lib/server/logger';
 import { recordServiceIncidents } from '@/lib/server/incidentsService';
 import { createPerformanceContext, recordPerformanceMetric, recordApiRequestMetric } from '@/lib/server/performance';
+import { withValidation } from '@/lib/server/middleware/withValidation';
+import { withRateLimit } from '@/lib/server/middleware/withRateLimit';
+import { departuresQuerySchema, parseStationsParam } from '@/lib/server/validation/schemas';
+import { createRequestContext, withRequestContext } from '@/lib/server/requestContext';
+import type { z } from 'zod';
 
-export async function GET(request: NextRequest) {
+async function baseHandler(
+  request: NextRequest,
+  context: Record<string, unknown>,
+  validated: z.infer<typeof departuresQuerySchema>
+) {
+  const requestContext = createRequestContext(request);
   const perfContext = createPerformanceContext(request, '/api/v1/departures');
   let cacheKey = '';
   try {
@@ -35,16 +45,17 @@ export async function GET(request: NextRequest) {
     }
 
     // Get station list and line from query params or use defaults
-    const searchParams = request.nextUrl.searchParams;
-    const stationsParam = searchParams.get('stations');
-    const lineParam = searchParams.get('line') || 'WRL';
+    const { line, stations } = validated;
+    const stationsParam = stations || null;
+    const lineParam = line || 'WRL';
     
     // Validate line code and get service ID
     const serviceId = getServiceIdFromLineCode(lineParam);
     
     // If no stations specified, use all stations for the line
-    const stationCodes = stationsParam
-      ? stationsParam.split(',').map(s => s.trim().toUpperCase())
+    const parsedStations = parseStationsParam(stationsParam || undefined);
+    const stationCodes = parsedStations?.length
+      ? parsedStations
       : getDefaultStationsForLine(serviceId);
 
     // Check cache first (cache key includes station list and line)
@@ -88,7 +99,8 @@ export async function GET(request: NextRequest) {
     // Fetch data from specified stations for the specified line
     const stationResults = await getMultipleStationDepartures(
       stationCodes,
-      serviceId
+      serviceId,
+      requestContext
     );
 
     // Process and organize departures
@@ -132,12 +144,12 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (err) {
     const error = err as Error;
-    logger.error('Error fetching departures', {
+    logger.error('Error fetching departures', withRequestContext({
       error: error.message,
       stack: error.stack,
       name: error.name,
       stations: cacheKey,
-    });
+    }, requestContext));
     
     // Record error metrics
     recordApiRequestMetric(
@@ -165,4 +177,9 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withRateLimit(
+  { limit: 60, windowMs: 60_000 },
+  withValidation(departuresQuerySchema, baseHandler)
+);
 

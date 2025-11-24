@@ -11,7 +11,7 @@ import { GET as v1GET } from '../v1/departures/route';
 
 export async function GET(request: NextRequest) {
   // Call v1 handler directly
-  const response = await v1GET(request);
+  const response = await v1GET(request, { params: {} });
   
   // Add deprecation warning header
   response.headers.set('X-API-Deprecated', 'true');

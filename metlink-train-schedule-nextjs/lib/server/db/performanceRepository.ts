@@ -64,6 +64,18 @@ export interface PerformanceRepository {
     errorRate: number;
     statusCodes: Record<number, number>;
   }>;
+  getApiRequestStats(options: {
+    endpoint?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<{
+    total: number;
+    averageResponseTime: number;
+    p95: number;
+    cacheHitRate: number;
+    errorRate: number;
+    lastEventAt: string | null;
+  }>;
 }
 
 class PerformanceRepositoryImpl implements PerformanceRepository {
@@ -292,6 +304,88 @@ class PerformanceRepositoryImpl implements PerformanceRepository {
         errorRate: 0,
         statusCodes: {},
       };
+    }
+  }
+
+  async getApiRequestStats(options: {
+    endpoint?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<{
+    total: number;
+    averageResponseTime: number;
+    p95: number;
+    cacheHitRate: number;
+    errorRate: number;
+    lastEventAt: string | null;
+  }> {
+    const defaultStats = {
+      total: 0,
+      averageResponseTime: 0,
+      p95: 0,
+      cacheHitRate: 0,
+      errorRate: 0,
+      lastEventAt: null,
+    };
+
+    try {
+      const supabase = getSupabaseAdminClient();
+      let query = supabase
+        .from('api_request_metrics')
+        .select('statusCode, responseTime, cacheHit, createdAt')
+        .order('createdAt', { ascending: false })
+        .limit(5000);
+
+      if (options.endpoint) {
+        query = query.eq('endpoint', options.endpoint);
+      }
+      if (options.startDate) {
+        query = query.gte('createdAt', options.startDate.toISOString());
+      }
+      if (options.endDate) {
+        query = query.lte('createdAt', options.endDate.toISOString());
+      }
+
+      const { data, error } = await query;
+      if (error || !data) {
+        throw error || new Error('Failed to load api_request_metrics');
+      }
+
+      const rows = data as Array<{
+        statusCode: number;
+        responseTime: number;
+        cacheHit: boolean;
+        createdAt: string;
+      }>;
+
+      if (rows.length === 0) {
+        return defaultStats;
+      }
+
+      const total = rows.length;
+      const totalResponseTime = rows.reduce((sum, row) => sum + row.responseTime, 0);
+      const averageResponseTime = Math.round(totalResponseTime / total);
+      const sortedResponseTimes = rows
+        .map((row) => row.responseTime)
+        .sort((a, b) => a - b);
+      const p95 = sortedResponseTimes[Math.floor(sortedResponseTimes.length * 0.95)] || 0;
+      const cacheHits = rows.filter((row) => row.cacheHit).length;
+      const errors = rows.filter((row) => row.statusCode >= 500).length;
+
+      return {
+        total,
+        averageResponseTime,
+        p95,
+        cacheHitRate: Math.round((cacheHits / total) * 10_000) / 100,
+        errorRate: Math.round((errors / total) * 10_000) / 100,
+        lastEventAt: rows[0]?.createdAt ?? null,
+      };
+    } catch (error) {
+      logger.warn('Failed to get API request stats', {
+        error: error instanceof Error ? error.message : String(error),
+        endpoint: options.endpoint ?? 'all',
+      });
+      return defaultStats;
     }
   }
 }

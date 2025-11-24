@@ -228,3 +228,5 @@ Supabase provides automatic backups. For manual backups:
 - [Supabase Documentation](https://supabase.com/docs)
 - [Supabase CLI Documentation](https://supabase.com/docs/reference/cli)
 - [Row Level Security Guide](https://supabase.com/docs/guides/auth/row-level-security)
+
+

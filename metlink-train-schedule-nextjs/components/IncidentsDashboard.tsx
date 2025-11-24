@@ -47,6 +47,19 @@ interface PerformanceStats {
   statusCodes: Record<number, number>;
 }
 
+interface MetricsSnapshot {
+  windowSeconds: number;
+  performance: PerformanceStats;
+  apiRequests: {
+    total: number;
+    cacheHitRate: number;
+    errorRate: number;
+    averageResponseTime: number;
+    p95: number;
+    lastEventAt: string | null;
+  };
+}
+
 const COLORS = {
   cancelled: '#ef4444',
   delayed: '#f59e0b',
@@ -117,8 +130,12 @@ export function IncidentsDashboard() {
   const [summary, setSummary] = useState<IncidentSummary | null>(null);
   const [recentIncidents, setRecentIncidents] = useState<Incident[]>([]);
   const [performanceStats, setPerformanceStats] = useState<PerformanceStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [apiMetrics, setApiMetrics] = useState<MetricsSnapshot['apiRequests'] | null>(null);
+  const [metricsWindowSeconds, setMetricsWindowSeconds] = useState(3600);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [recentLoading, setRecentLoading] = useState(true);
+  const [metricsLoading, setMetricsLoading] = useState(true);
+  const [partialError, setPartialError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d'>(() => {
     const prefs = loadPreferences();
     return prefs.timeRange;
@@ -165,93 +182,132 @@ export function IncidentsDashboard() {
   }, [recentIncidents]);
 
   useEffect(() => {
-    async function fetchData() {
+    let cancelled = false;
+    setPartialError(null);
+
+    const endDate = new Date();
+    const startDate = new Date();
+    switch (timeRange) {
+      case '24h':
+        startDate.setHours(startDate.getHours() - 24);
+        break;
+      case '7d':
+        startDate.setDate(startDate.getDate() - 7);
+        break;
+      case '30d':
+        startDate.setDate(startDate.getDate() - 30);
+        break;
+    }
+
+    const loadSummary = async () => {
+      setSummaryLoading(true);
       try {
-        setLoading(true);
-        setError(null);
-
-        // Calculate date range
-        const endDate = new Date();
-        const startDate = new Date();
-        switch (timeRange) {
-          case '24h':
-            startDate.setHours(startDate.getHours() - 24);
-            break;
-          case '7d':
-            startDate.setDate(startDate.getDate() - 7);
-            break;
-          case '30d':
-            startDate.setDate(startDate.getDate() - 30);
-            break;
-        }
-
-        // Fetch incidents summary
         const summaryParams = new URLSearchParams({
           serviceId: selectedLine,
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
         });
-        const summaryResponse = await fetch(`/api/analytics/incidents/summary?${summaryParams.toString()}`);
-        if (summaryResponse.ok) {
-          const summaryData = await summaryResponse.json();
-          if (summaryData.success) {
-            setSummary(summaryData.data);
-          }
+        const response = await fetch(`/api/analytics/incidents/summary?${summaryParams.toString()}`);
+        if (!response.ok) {
+          throw new Error('Failed to load incidents summary');
         }
+        const payload = await response.json();
+        if (!payload.success) {
+          throw new Error(payload.error?.message || 'Summary request failed');
+        }
+        if (!cancelled) {
+          setSummary(payload.data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPartialError('Some analytics panels failed to load. Showing what we have.');
+        }
+      } finally {
+        if (!cancelled) {
+          setSummaryLoading(false);
+        }
+      }
+    };
 
-        // Fetch recent incidents
+    const loadRecent = async () => {
+      setRecentLoading(true);
+      try {
         const recentParams = new URLSearchParams({
           serviceId: selectedLine,
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
           limit: '50',
         });
-        const recentResponse = await fetch(`/api/analytics/incidents/recent?${recentParams.toString()}`);
-        if (recentResponse.ok) {
-          const recentData = await recentResponse.json();
-          if (recentData.success) {
-            setRecentIncidents(recentData.data.incidents || []);
-          }
+        const response = await fetch(`/api/analytics/incidents/recent?${recentParams.toString()}`);
+        if (!response.ok) {
+          throw new Error('Failed to load recent incidents');
         }
-
-        // Fetch performance stats
-        const perfResponse = await fetch('/api/analytics/performance');
-        if (perfResponse.ok) {
-          const perfData = await perfResponse.json();
-          if (perfData.success) {
-            setPerformanceStats(perfData.data);
-          }
+        const payload = await response.json();
+        if (!payload.success) {
+          throw new Error(payload.error?.message || 'Recent incidents request failed');
+        }
+        if (!cancelled) {
+          setRecentIncidents(payload.data.incidents || []);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load analytics');
+        if (!cancelled) {
+          setPartialError('Some analytics panels failed to load. Showing what we have.');
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setRecentLoading(false);
+        }
       }
-    }
+    };
 
-    fetchData();
+    const loadMetrics = async () => {
+      setMetricsLoading(true);
+      try {
+        const response = await fetch('/api/metrics?windowSeconds=3600');
+        if (!response.ok) {
+          throw new Error('Failed to load metrics');
+        }
+        const payload = await response.json();
+        if (!payload.success) {
+          throw new Error(payload.error?.message || 'Metrics request failed');
+        }
+        const metrics: MetricsSnapshot = payload.data;
+        if (!cancelled) {
+          setPerformanceStats(metrics.performance);
+          setApiMetrics(metrics.apiRequests);
+          setMetricsWindowSeconds(metrics.windowSeconds);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPartialError('Some analytics panels failed to load. Showing what we have.');
+        }
+      } finally {
+        if (!cancelled) {
+          setMetricsLoading(false);
+        }
+      }
+    };
+
+    loadSummary();
+    loadRecent();
+    loadMetrics();
+
+    return () => {
+      cancelled = true;
+    };
   }, [timeRange, selectedLine]);
-
-  if (loading) {
-    return (
-      <div className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white p-6">
-        <h2 className="font-bold text-lg uppercase mb-2">Loading Analytics</h2>
-        <p className="text-black/80 dark:text-white/80">Loading incidents data...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white p-6">
-        <h2 className="font-bold text-lg uppercase mb-2">Error</h2>
-        <p className="text-black/80 dark:text-white/80">{error}</p>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
+      {partialError && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-500 dark:border-yellow-400 text-yellow-900 dark:text-yellow-100 px-4 py-3"
+        >
+          {partialError}
+        </div>
+      )}
       {/* Filters Section */}
       <div className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white">
         <div className="p-6 border-b-2 border-black dark:border-white">
@@ -295,7 +351,9 @@ export function IncidentsDashboard() {
           </p>
         </div>
         <div className="p-6">
-          {summary ? (
+          {summaryLoading ? (
+            <p className="text-black/80 dark:text-white/80 text-sm">Loading summary...</p>
+          ) : summary ? (
             <div className="space-y-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
@@ -329,74 +387,86 @@ export function IncidentsDashboard() {
       </div>
 
       {/* Incidents Over Time Chart */}
-      {chartData.length > 0 && (
+      {(recentLoading || chartData.length > 0) && (
         <div className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white">
           <div className="p-6 border-b-2 border-black dark:border-white">
             <h2 className="font-bold text-lg uppercase mb-1">Incidents Over Time</h2>
           </div>
           <div className="p-6 [&_.recharts-cartesian-axis-tick_text]:fill-black [&_.recharts-cartesian-axis-tick_text]:dark:fill-white [&_.recharts-cartesian-grid_line]:stroke-black [&_.recharts-cartesian-grid_line]:dark:stroke-white">
-            <IncidentsBarChart data={chartData} />
+            {recentLoading ? (
+              <ChartSkeleton />
+            ) : chartData.length > 0 ? (
+              <IncidentsBarChart data={chartData} />
+            ) : (
+              <p className="text-sm text-black/80 dark:text-white/80">No incidents recorded for this range.</p>
+            )}
           </div>
         </div>
       )}
 
       {/* Recent Incidents Table */}
-      {recentIncidents.length > 0 && (
+      {(recentLoading || recentIncidents.length > 0) && (
         <div className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white">
           <div className="p-6 border-b-2 border-black dark:border-white">
             <h2 className="font-bold text-lg uppercase mb-1">Recent Incidents</h2>
           </div>
           <div className="p-6 overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="border-b-2 border-black dark:border-white">
-                  <th className="text-left p-2 font-bold uppercase text-black dark:text-white">Date</th>
-                  <th className="text-left p-2 font-bold uppercase text-black dark:text-white">Type</th>
-                  <th className="text-left p-2 font-bold uppercase text-black dark:text-white">Station</th>
-                  <th className="text-left p-2 font-bold uppercase text-black dark:text-white">Destination</th>
-                  <th className="text-left p-2 font-bold uppercase text-black dark:text-white">Aimed</th>
-                  <th className="text-left p-2 font-bold uppercase text-black dark:text-white">Delay</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentIncidents.slice(0, 50).map((incident) => {
-                  const aimed = new Date(incident.aimedTime);
-                  const typeColor =
-                    incident.incidentType === 'cancelled'
-                      ? 'text-red-600 dark:text-red-400'
-                      : incident.incidentType === 'delayed'
-                      ? 'text-yellow-600 dark:text-yellow-400'
-                      : 'text-blue-600 dark:text-blue-400';
+            {recentLoading ? (
+              <p className="text-sm text-black/80 dark:text-white/80">Loading recent incidents...</p>
+            ) : recentIncidents.length > 0 ? (
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b-2 border-black dark:border-white">
+                    <th className="text-left p-2 font-bold uppercase text-black dark:text-white">Date</th>
+                    <th className="text-left p-2 font-bold uppercase text-black dark:text-white">Type</th>
+                    <th className="text-left p-2 font-bold uppercase text-black dark:text-white">Station</th>
+                    <th className="text-left p-2 font-bold uppercase text-black dark:text-white">Destination</th>
+                    <th className="text-left p-2 font-bold uppercase text-black dark:text-white">Aimed</th>
+                    <th className="text-left p-2 font-bold uppercase text-black dark:text-white">Delay</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentIncidents.slice(0, 50).map((incident) => {
+                    const aimed = new Date(incident.aimedTime);
+                    const typeColor =
+                      incident.incidentType === 'cancelled'
+                        ? 'text-red-600 dark:text-red-400'
+                        : incident.incidentType === 'delayed'
+                        ? 'text-yellow-600 dark:text-yellow-400'
+                        : 'text-blue-600 dark:text-blue-400';
 
-                  return (
-                    <tr key={incident.id} className="border-b border-black/20 dark:border-white/20">
-                      <td className="p-2 text-black/80 dark:text-white/80 font-mono text-sm">
-                        {aimed.toLocaleDateString()}
-                      </td>
-                      <td className={`p-2 font-mono text-sm font-semibold ${typeColor}`}>
-                        {incident.incidentType === 'cancelled'
-                          ? 'CANCELLED'
-                          : incident.incidentType === 'delayed'
-                          ? 'DELAYED'
-                          : 'BUS REPLACEMENT'}
-                      </td>
-                      <td className="p-2 text-black/80 dark:text-white/80 font-mono text-sm">
-                        {incident.station || 'N/A'}
-                      </td>
-                      <td className="p-2 text-black/80 dark:text-white/80 font-mono text-sm">
-                        {incident.destination}
-                      </td>
-                      <td className="p-2 text-black/80 dark:text-white/80 font-mono text-sm">
-                        {aimed.toLocaleTimeString()}
-                      </td>
-                      <td className="p-2 text-black/80 dark:text-white/80 font-mono text-sm">
-                        {incident.delayMinutes !== null ? `+${incident.delayMinutes}m` : 'N/A'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                    return (
+                      <tr key={incident.id} className="border-b border-black/20 dark:border-white/20">
+                        <td className="p-2 text-black/80 dark:text-white/80 font-mono text-sm">
+                          {aimed.toLocaleDateString()}
+                        </td>
+                        <td className={`p-2 font-mono text-sm font-semibold ${typeColor}`}>
+                          {incident.incidentType === 'cancelled'
+                            ? 'CANCELLED'
+                            : incident.incidentType === 'delayed'
+                            ? 'DELAYED'
+                            : 'BUS REPLACEMENT'}
+                        </td>
+                        <td className="p-2 text-black/80 dark:text-white/80 font-mono text-sm">
+                          {incident.station || 'N/A'}
+                        </td>
+                        <td className="p-2 text-black/80 dark:text-white/80 font-mono text-sm">
+                          {incident.destination}
+                        </td>
+                        <td className="p-2 text-black/80 dark:text-white/80 font-mono text-sm">
+                          {aimed.toLocaleTimeString()}
+                        </td>
+                        <td className="p-2 text-black/80 dark:text-white/80 font-mono text-sm">
+                          {incident.delayMinutes !== null ? `+${incident.delayMinutes}m` : 'N/A'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <p className="text-sm text-black/80 dark:text-white/80">No incidents recorded.</p>
+            )}
           </div>
         </div>
       )}
@@ -405,23 +475,57 @@ export function IncidentsDashboard() {
       <div className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white">
         <div className="p-6 border-b-2 border-black dark:border-white">
           <h2 className="font-bold text-lg uppercase mb-1">API Performance</h2>
-          <p className="text-black/80 dark:text-white/80 text-sm">System performance metrics</p>
+          <p className="text-black/80 dark:text-white/80 text-sm">
+            Metrics from the last {Math.round(metricsWindowSeconds / 60)} minutes
+          </p>
         </div>
         <div className="p-6">
-          {performanceStats ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-              <div>
-                <div className="text-3xl font-bold text-black dark:text-white">{performanceStats.averageResponseTime.toFixed(0)}ms</div>
-                <div className="text-sm text-black/80 dark:text-white/80 uppercase mt-1">Avg Response Time</div>
+          {metricsLoading ? (
+            <p className="text-sm text-black/80 dark:text-white/80">Loading metrics...</p>
+          ) : performanceStats ? (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                <div>
+                  <div className="text-3xl font-bold text-black dark:text-white">
+                    {performanceStats.averageResponseTime.toFixed(0)}ms
+                  </div>
+                  <div className="text-sm text-black/80 dark:text-white/80 uppercase mt-1">Avg Response</div>
+                </div>
+                <div>
+                  <div className="text-3xl font-bold text-black dark:text-white">
+                    {performanceStats.p95.toFixed(0)}ms
+                  </div>
+                  <div className="text-sm text-black/80 dark:text-white/80 uppercase mt-1">P95 Response</div>
+                </div>
+                <div>
+                  <div className="text-3xl font-bold text-black dark:text-white">
+                    {performanceStats.errorRate.toFixed(1)}%
+                  </div>
+                  <div className="text-sm text-black/80 dark:text-white/80 uppercase mt-1">Error Rate</div>
+                </div>
               </div>
-              <div>
-                <div className="text-3xl font-bold text-black dark:text-white">{performanceStats.p95.toFixed(0)}ms</div>
-                <div className="text-sm text-black/80 dark:text-white/80 uppercase mt-1">P95 Response Time</div>
-              </div>
-              <div>
-                <div className="text-3xl font-bold text-black dark:text-white">{performanceStats.errorRate.toFixed(1)}%</div>
-                <div className="text-sm text-black/80 dark:text-white/80 uppercase mt-1">Error Rate</div>
-              </div>
+              {apiMetrics && (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                  <div>
+                    <div className="text-3xl font-bold text-black dark:text-white">
+                      {apiMetrics.cacheHitRate.toFixed(1)}%
+                    </div>
+                    <div className="text-sm text-black/80 dark:text-white/80 uppercase mt-1">Cache Hit Rate</div>
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold text-black dark:text-white">
+                      {apiMetrics.total}
+                    </div>
+                    <div className="text-sm text-black/80 dark:text-white/80 uppercase mt-1">Requests (window)</div>
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold text-black dark:text-white">
+                      {apiMetrics.errorRate.toFixed(1)}%
+                    </div>
+                    <div className="text-sm text-black/80 dark:text-white/80 uppercase mt-1">API Error Rate</div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-black/80 dark:text-white/80">No data available</div>
@@ -429,7 +533,7 @@ export function IncidentsDashboard() {
         </div>
       </div>
 
-      {!summary && recentIncidents.length === 0 && (
+      {!summary && !summaryLoading && recentIncidents.length === 0 && !recentLoading && (
         <div className="bg-white dark:bg-black border-2 border-black dark:border-white text-black dark:text-white p-6">
           <p className="text-black/80 dark:text-white/80">No incidents data available for the selected time range.</p>
         </div>

@@ -25,6 +25,7 @@ import { Input } from './ui/input';
 import type { Departure } from '@/types';
 import type { LineCode } from '@/lib/constants';
 import type { SortOption, SortDirection } from '@/lib/utils/sortUtils';
+import type { StaleState } from '@/hooks/useTrainSchedule';
 
 interface DepartureBoardProps {
   departures: Departure[];
@@ -43,6 +44,7 @@ interface DepartureBoardProps {
     sortDirection: SortDirection;
   };
   onConfigSaved?: () => void;
+  staleState?: StaleState;
 }
 
 export function DepartureBoard({
@@ -62,6 +64,7 @@ export function DepartureBoard({
     sortDirection: 'asc',
   },
   onConfigSaved,
+  staleState = { isStale: false, since: null },
 }: DepartureBoardProps) {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [configName, setConfigName] = useState('');
@@ -426,6 +429,35 @@ export function DepartureBoard({
           </div>
         </div>
       </header>
+
+      {staleState?.isStale && (
+        <section
+          aria-live="polite"
+          className="max-w-7xl mx-auto px-4 sm:px-8 py-4"
+        >
+          <div className="border-2 border-yellow-500 bg-yellow-50 text-yellow-900 dark:border-yellow-400 dark:bg-yellow-900/20 dark:text-yellow-100 px-4 py-3 flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 flex-shrink-0" aria-hidden="true" />
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider">Using cached departures</p>
+              <p className="text-sm">
+                {staleState.message || 'Showing the last departures we saved while we reconnect.'}
+              </p>
+              {staleState.since && (
+                <p className="text-xs mt-1 text-yellow-900/80 dark:text-yellow-100/80">
+                  Last updated&nbsp;
+                  <time dateTime={staleState.since.toISOString()}>
+                    {staleState.since.toLocaleTimeString('en-NZ', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: false,
+                    })}
+                  </time>
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Next Train Wait Time and Service Notice Panel */}
       {nextDepartureWaitTime !== null && nextDepartureWaitTime.minutes !== null && (

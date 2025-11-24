@@ -32,7 +32,7 @@ export default function Home() {
     return initial as Record<LineCode, string[]>;
   });
   
-  const { departures, loading, refreshing, error, lastUpdated, refresh } = useTrainSchedule({ 
+  const { departures, loading, refreshing, error, lastUpdated, refresh, staleState } = useTrainSchedule({ 
     line: selectedLine,
     stations: selectedStations[selectedLine],
   });
@@ -240,6 +240,7 @@ export default function Home() {
             onRefresh={refresh}
             selectedLine={selectedLine}
             selectedStations={selectedStations[selectedLine] || []}
+            staleState={staleState}
             filters={{
               selectedStation,
               routeFilter,

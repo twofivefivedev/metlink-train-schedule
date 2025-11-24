@@ -3,9 +3,21 @@
  * Displays service incidents analytics and API performance metrics
  */
 
-import { IncidentsDashboard } from '@/components/IncidentsDashboard';
+import { Suspense } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+
+const IncidentsDashboard = dynamic(
+  () =>
+    import('@/components/IncidentsDashboard').then((mod) => ({
+      default: mod.IncidentsDashboard,
+    })),
+  {
+    ssr: false,
+    loading: () => <AnalyticsDashboardSkeleton />,
+  }
+);
 
 export default function AnalyticsPage() {
   return (
@@ -45,9 +57,21 @@ export default function AnalyticsPage() {
 
         {/* Content Section */}
         <div className="max-w-7xl mx-auto px-4 sm:px-8 py-6">
-          <IncidentsDashboard />
+          <Suspense fallback={<AnalyticsDashboardSkeleton />}>
+            <IncidentsDashboard />
+          </Suspense>
         </div>
       </main>
+    </div>
+  );
+}
+
+function AnalyticsDashboardSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="h-32 border-2 border-dashed border-black/30 dark:border-white/30" />
+      <div className="h-64 border-2 border-dashed border-black/30 dark:border-white/30" />
+      <div className="h-48 border-2 border-dashed border-black/30 dark:border-white/30" />
     </div>
   );
 }

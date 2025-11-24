@@ -246,3 +246,5 @@ If you encounter issues:
 3. Verify Supabase project status
 4. Check application logs for connection errors
 
+
+
