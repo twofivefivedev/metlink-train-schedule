@@ -216,8 +216,8 @@ useEffect(() => {
 
 - **Impact:** Every render path that cares about preferences triggers its own network read, increasing load time and causing config inconsistencies (alerts panel may show stale data compared to favorites).
 - **Actions:**
-  1. Add a `PreferencesProvider` that hydrates once (localStorage first, Supabase second) and exposes `usePreferences()` + mutation helpers, so all consumers share a single cache.
-  2. Push Supabase syncs into a background worker/debounced effect rather than blocking UI interactions.
+  1.  Add a `PreferencesProvider` that hydrates once (localStorage first, Supabase second) and exposes `usePreferences()` + mutation helpers, so all consumers share a single cache.
+  2.  Push Supabase syncs into a background worker/debounced effect rather than blocking UI interactions.
 
 ### 2. Per-row timers & table re-renders
 
