@@ -73,7 +73,7 @@ const IncidentsBarChart = dynamic(
 
 function ChartSkeleton() {
   return (
-    <div className="h-[300px] w-full border-2 border-dashed border-black/30 dark:border-white/30 bg-black/5 dark:bg-white/10 animate-pulse" />
+    <div className="h-[300px] w-full border-2 border-dashed border-black/30 dark:border-white/30 bg-black/5 dark:bg-white/10" />
   );
 }
 

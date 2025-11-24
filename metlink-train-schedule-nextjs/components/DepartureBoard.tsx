@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { ArrowLeftRight, AlertTriangle, RefreshCw, Clock, BookmarkPlus } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
@@ -68,35 +68,6 @@ export function DepartureBoard({
   const displayedDepartures = departures.slice(0, 10);
   const currentTime = useCurrentTime();
   const { syncFromStorage } = usePreferences();
-  
-  // Track when departures change to trigger animations
-  const [animationKey, setAnimationKey] = useState(0);
-  const prevDepartureHashRef = useRef<string>('');
-  const isInitialMountRef = useRef(true);
-  
-  // Create a stable hash of departures to detect actual data changes
-  const departureHash = useMemo(() => {
-    return departures
-      .slice(0, 10)
-      .map(d => `${d.service_id}-${d.station}-${d.departure?.aimed}`)
-      .join('|');
-  }, [departures, direction]);
-  
-  useEffect(() => {
-    // Trigger animation on initial mount
-    if (isInitialMountRef.current) {
-      isInitialMountRef.current = false;
-      setAnimationKey(1);
-      return;
-    }
-    
-    // Update animation key when departures change to force re-animation
-    // Only trigger animation if the hash actually changed
-    if (departureHash && departureHash !== prevDepartureHashRef.current) {
-      prevDepartureHashRef.current = departureHash;
-      setAnimationKey(prev => prev + 1);
-    }
-  }, [departureHash]);
   
   // Group delayed trains by trip_id to identify which stations belong to the same train
   // Only show expected time on the first station of each delayed train
@@ -484,7 +455,7 @@ export function DepartureBoard({
 
             {/* Service Notice Panel - only shown when user selects a notice */}
             {selectedNotice && (
-              <div className="bg-white dark:bg-black border-2 border-black dark:border-white px-4 sm:px-8 py-4 sm:py-6 animate-slide-in-right">
+              <div className="bg-white dark:bg-black border-2 border-black dark:border-white px-4 sm:px-8 py-4 sm:py-6">
                 <h2 id="service-notice-heading" className="text-sm font-semibold uppercase tracking-wider mb-3">
                   Service Notice
                 </h2>
@@ -548,14 +519,10 @@ export function DepartureBoard({
                   });
                 };
                 
-                // Calculate animation delay for staggered effect (max 300ms)
-                const animationDelay = Math.min(index * 100, 300);
-                
                 return (
                   <li 
                     key={index} 
-                    className="px-4 sm:px-8 py-3 sm:py-4 animate-fade-in-slide" 
-                    style={{ animationDelay: `${animationDelay}ms`, animationFillMode: 'both' }}
+                    className="px-4 sm:px-8 py-3 sm:py-4" 
                     role="listitem"
                   >
                     <div className="flex items-center justify-between">
@@ -583,7 +550,7 @@ export function DepartureBoard({
       {/* Departure Board Table */}
       <section aria-labelledby="departures-heading" className="max-w-7xl mx-auto px-4 sm:px-8 pt-2 pb-8">
         {loading ? (
-          <div className="bg-white dark:bg-black border-2 border-black dark:border-white animate-fade-in-scale">
+          <div className="bg-white dark:bg-black border-2 border-black dark:border-white">
             <h2 id="departures-heading" className="sr-only">
               Train Departures Table
             </h2>
@@ -608,7 +575,7 @@ export function DepartureBoard({
             </div>
           </div>
         ) : displayedDepartures.length === 0 ? (
-          <div className="text-center py-16 text-black/70 dark:text-white/70 animate-fade-in" role="status" aria-live="polite">
+          <div className="text-center py-16 text-black/70 dark:text-white/70" role="status" aria-live="polite">
             <p className="text-xl font-semibold">No trains scheduled at this time</p>
           </div>
         ) : (
@@ -647,31 +614,16 @@ export function DepartureBoard({
                 const stationId = `${tripId}-${departure.station}-${departure.departure?.aimed}`;
                 const isFirstDelayedStation = delayedTrainFirstStations.has(stationId);
                 
-                // Calculate animation delay for staggered effect (max 400ms)
-                // Increase delay to make animation more visible
-                const animationDelay = Math.min(index * 100, 400);
-                
-                // Create a unique key that includes animation key to force re-animation on data changes
-                const uniqueKey = `${departureId}-${animationKey}-${index}`;
-                
                 return (
-                  <div
-                    key={uniqueKey}
-                    className="animate-slide-up"
-                    style={{ 
-                      animationDelay: `${animationDelay}ms`, 
-                      animationFillMode: 'both',
-                    }}
-                  >
-                    <DepartureBoardRow
-                      departure={departure}
-                      index={index}
-                      onSelect={handleNoticeSelect}
-                      isSelected={departureId === selectedId}
-                      showExpectedTime={isFirstDelayedStation}
-                      currentTime={currentTime}
-                    />
-                  </div>
+                  <DepartureBoardRow
+                    key={`${departureId}-${index}`}
+                    departure={departure}
+                    index={index}
+                    onSelect={handleNoticeSelect}
+                    isSelected={departureId === selectedId}
+                    showExpectedTime={isFirstDelayedStation}
+                    currentTime={currentTime}
+                  />
                 );
               })}
             </div>
