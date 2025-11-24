@@ -2,9 +2,17 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from './ui/button';
-import { Check, ChevronDown, X } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import { LINE_STATIONS, STATION_NAMES, getDefaultStationsForLine } from '@/lib/constants';
 import type { LineCode } from '@/lib/constants';
+import {
+  CommandDialog,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from '@/components/ui/command';
 
 interface StationSelectorProps {
   selectedLine: LineCode;
@@ -18,6 +26,7 @@ export function StationSelector({
   onStationsChange,
 }: StationSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [draftSelection, setDraftSelection] = useState<string[]>(selectedStations);
   const availableStations = useMemo(() => {
     return LINE_STATIONS[selectedLine] || [];
   }, [selectedLine]);
@@ -39,34 +48,52 @@ export function StationSelector({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLine]); // Only depend on selectedLine to avoid loops
 
-  const handleToggleStation = (station: string) => {
-    if (selectedStations.includes(station)) {
-      // Don't allow deselecting all stations
-      if (selectedStations.length > 1) {
-        onStationsChange(selectedStations.filter(s => s !== station));
-      }
-    } else {
-      onStationsChange([...selectedStations, station]);
+  useEffect(() => {
+    if (!isOpen) {
+      setDraftSelection(selectedStations);
     }
+  }, [isOpen, selectedStations]);
+
+  const handleToggleStation = (station: string) => {
+    setDraftSelection((previous) => {
+      if (previous.includes(station)) {
+        if (previous.length === 1) {
+          return previous;
+        }
+        return previous.filter((s) => s !== station);
+      }
+      return [...previous, station];
+    });
   };
 
   const handleSelectAll = () => {
-    onStationsChange([...availableStations]);
+    setDraftSelection([...availableStations]);
   };
 
-  const handleClear = () => {
-    // Set to all stations (can't have empty selection)
-    onStationsChange([...availableStations]);
+  const handleReset = () => {
+    setDraftSelection(getDefaultStationsForLine(selectedLine));
+  };
+
+  const handleApply = () => {
+    if (draftSelection.length === 0) {
+      onStationsChange([...availableStations]);
+    } else {
+      onStationsChange([...draftSelection]);
+    }
+    setIsOpen(false);
   };
 
   const isAllSelected = availableStations.every(s => selectedStations.includes(s));
   const selectedCount = selectedStations.length;
   const totalCount = availableStations.length;
+  const summaryLabel = isAllSelected
+    ? 'All Stations'
+    : `${selectedCount} of ${totalCount} stations`;
 
   return (
     <div className="relative">
       <label className="block text-sm font-semibold uppercase tracking-wider text-black dark:text-white mb-2">
-        Stations ({selectedCount === totalCount ? 'All' : `${selectedCount} selected`})
+        Stations ({summaryLabel})
       </label>
       <div className="relative">
         <button
@@ -79,99 +106,88 @@ export function StationSelector({
           aria-label="Select stations"
         >
           <span className="truncate">
-            {isAllSelected
-              ? 'All Stations'
-              : `${selectedCount} of ${totalCount} stations`}
+            {summaryLabel}
           </span>
           <ChevronDown className={`h-3.5 w-3.5 text-black dark:text-white transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
         </button>
 
-        {isOpen && (
-          <>
-            <div
-              className="fixed inset-0 z-10"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsOpen(false);
-              }}
-              aria-hidden="true"
-            />
-            <div 
-              className="absolute z-20 w-full mt-1 bg-white dark:bg-black border-2 border-black dark:border-white max-h-64 overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="p-2 border-b-2 border-black dark:border-white flex items-center justify-between">
-                <div className="flex gap-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleSelectAll();
-                    }}
-                    className="text-xs font-semibold uppercase tracking-wider text-black dark:text-white hover:underline px-2 py-1"
-                  >
-                    Select All
-                  </button>
-                  {!isAllSelected && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleClear();
-                      }}
-                      className="text-xs font-semibold uppercase tracking-wider text-black dark:text-white hover:underline px-2 py-1"
-                    >
-                      Reset
-                    </button>
-                  )}
-                </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsOpen(false);
-                  }}
-                  className="p-1 hover:bg-black/5 dark:hover:bg-white/5"
-                  aria-label="Close"
-                >
-                  <X className="h-4 w-4" aria-hidden="true" />
-                </button>
+        <CommandDialog
+          open={isOpen}
+          onOpenChange={(open) => {
+            setIsOpen(open);
+            if (!open) {
+              setDraftSelection(selectedStations);
+            }
+          }}
+          title="Select stations"
+          description="Search to find a station quickly"
+        >
+          <div className="border-b border-black/10 dark:border-white/10 px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-black dark:text-white">
+                  Choose stations
+                </p>
+                <p className="text-xs text-black/70 dark:text-white/70">
+                  {draftSelection.length} selected • {availableStations.length} total
+                </p>
               </div>
-              <div className="p-2 space-y-1">
-                {availableStations.length === 0 ? (
-                  <div className="p-4 text-sm text-black/70 dark:text-white/70 text-center">
-                    No stations available for this line
-                  </div>
-                ) : (
-                  availableStations.map((station) => {
-                    const isSelected = selectedStations.includes(station);
-                    return (
-                      <label
-                        key={station}
-                        className="flex items-center gap-2 p-2 hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            handleToggleStation(station);
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          disabled={isSelected && selectedStations.length === 1}
-                          className="w-4 h-4 border-2 border-black dark:border-white bg-white dark:bg-black text-black dark:text-white focus:ring-2 focus:ring-black dark:focus:ring-white"
-                        />
-                        <span className="text-sm text-black dark:text-white flex-1">
-                          {STATION_NAMES[station] || station}
-                        </span>
-                        {isSelected && (
-                          <Check className="h-4 w-4 text-black dark:text-white" aria-hidden="true" />
-                        )}
-                      </label>
-                    );
-                  })
-                )}
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSelectAll}
+                  className="h-8"
+                >
+                  Select All
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleReset}
+                  className="h-8"
+                >
+                  Reset
+                </Button>
               </div>
             </div>
-          </>
-        )}
+          </div>
+          <CommandInput placeholder="Search stations..." />
+          <CommandList>
+            <CommandEmpty>No stations found</CommandEmpty>
+            <CommandGroup heading="Stations">
+              {availableStations.map((station) => {
+                const isSelected = draftSelection.includes(station);
+                return (
+                  <CommandItem
+                    key={station}
+                    onSelect={() => handleToggleStation(station)}
+                    className="flex items-center gap-3 text-sm"
+                  >
+                    <span className="w-5 h-5 flex items-center justify-center border-2 border-black dark:border-white text-black dark:text-white">
+                      <Check className={`h-3 w-3 ${isSelected ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true" />
+                    </span>
+                    <span className="flex-1 text-black dark:text-white">
+                      {STATION_NAMES[station] || station}
+                    </span>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+          <div className="flex items-center justify-between border-t border-black/10 dark:border-white/10 px-4 py-3">
+            <p className="text-xs text-black/70 dark:text-white/70">
+              Keep at least one station selected.
+            </p>
+            <Button
+              onClick={handleApply}
+              disabled={draftSelection.length === 0}
+              className="h-9"
+            >
+              Apply Selection
+            </Button>
+          </div>
+        </CommandDialog>
       </div>
     </div>
   );

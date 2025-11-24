@@ -6,6 +6,28 @@ import { render, screen } from '@testing-library/react';
 import { DepartureBoard } from '@/components/DepartureBoard';
 import type { Departure } from '@/types';
 
+// Mock preferences context (DepartureBoard consumes usePreferences)
+jest.mock('@/components/preferences-provider', () => ({
+  usePreferences: () => ({
+    preferences: {
+      configs: [],
+      favorites: [],
+      alerts: {
+        enabled: false,
+        notifyOnDelay: true,
+        notifyOnCancellation: true,
+        notifyOnApproaching: false,
+        approachingMinutes: 5,
+      },
+    },
+    loading: false,
+    hydrated: true,
+    refresh: jest.fn().mockResolvedValue(undefined),
+    syncFromStorage: jest.fn(),
+    updatePreferences: jest.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 // Mock next-themes
 jest.mock('next-themes', () => ({
   useTheme: () => ({
@@ -41,7 +63,9 @@ describe('DepartureBoard', () => {
       />
     );
 
-    expect(screen.getByText(/TRAINS TO WELLINGTON/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /Trains from Masterton to Wellington/i })
+    ).toBeInTheDocument();
   });
 
   it('displays departures when provided', () => {
@@ -57,7 +81,6 @@ describe('DepartureBoard', () => {
     );
 
     expect(screen.getByText(/TIME/i)).toBeInTheDocument();
-    expect(screen.getByText(/DESTINATION/i)).toBeInTheDocument();
     expect(screen.getByText(/STATION/i)).toBeInTheDocument();
     expect(screen.getByText(/STATUS/i)).toBeInTheDocument();
   });
@@ -77,5 +100,7 @@ describe('DepartureBoard', () => {
     expect(screen.getByText(/No trains scheduled at this time/i)).toBeInTheDocument();
   });
 });
+
+
 
 

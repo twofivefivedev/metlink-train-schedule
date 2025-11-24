@@ -1,37 +1,22 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Button } from './ui/button';
 import { Bell, BellOff, X } from 'lucide-react';
-import {
-  loadPreferences,
-  loadPreferencesSync,
-  updateAlertPreferences,
-  type AlertPreferences,
-  type UserPreferences,
-} from '@/lib/utils/favorites';
+import { usePreferences } from '@/components/preferences-provider';
 
 export function AlertsButton() {
-  const [preferences, setPreferences] = useState<UserPreferences>(loadPreferencesSync());
+  const { preferences, updatePreferences } = usePreferences();
   const [isOpen, setIsOpen] = useState(false);
 
-  useEffect(() => {
-    // Load preferences asynchronously (may load from database)
-    const loadPrefs = async () => {
-      const prefs = await loadPreferences();
-      setPreferences(prefs);
-    };
-    loadPrefs();
-  }, []);
-
   const handleToggleAlerts = async () => {
-    const newAlerts: AlertPreferences = {
-      ...preferences.alerts,
-      enabled: !preferences.alerts.enabled,
-    };
-    await updateAlertPreferences(newAlerts);
-    const updatedPrefs = await loadPreferences();
-    setPreferences(updatedPrefs);
+    await updatePreferences((prev) => ({
+      ...prev,
+      alerts: {
+        ...prev.alerts,
+        enabled: !prev.alerts.enabled,
+      },
+    }));
   };
 
   return (

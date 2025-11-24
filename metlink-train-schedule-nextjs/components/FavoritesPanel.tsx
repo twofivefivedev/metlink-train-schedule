@@ -1,16 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Button } from './ui/button';
 import { Star, X, Play } from 'lucide-react';
 import {
-  loadPreferences,
-  loadPreferencesSync,
   removeScheduleConfig,
   type ScheduleConfig,
-  type UserPreferences,
 } from '@/lib/utils/favorites';
 import { LINE_NAMES } from '@/lib/constants';
+import { usePreferences } from '@/components/preferences-provider';
 
 interface FavoritesPanelProps {
   onConfigSelect?: (config: ScheduleConfig) => void;
@@ -21,22 +19,12 @@ export function FavoritesPanel({
   onConfigSelect,
   onFavoriteChange,
 }: FavoritesPanelProps) {
-  const [preferences, setPreferences] = useState<UserPreferences>(loadPreferencesSync());
+  const { preferences, syncFromStorage } = usePreferences();
   const [isOpen, setIsOpen] = useState(false); // Hidden by default
 
-  useEffect(() => {
-    // Load preferences asynchronously (may load from database)
-    const loadPrefs = async () => {
-      const prefs = await loadPreferences();
-      setPreferences(prefs);
-    };
-    loadPrefs();
-  }, []);
-
   const handleRemoveConfig = async (configId: string) => {
-    await removeScheduleConfig(configId);
-    const updatedPrefs = await loadPreferences();
-    setPreferences(updatedPrefs);
+    await Promise.resolve(removeScheduleConfig(configId));
+    syncFromStorage();
     onFavoriteChange?.();
   };
 

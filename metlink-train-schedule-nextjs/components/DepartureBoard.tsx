@@ -19,6 +19,7 @@ import {
 import { useCurrentTime } from '@/hooks/useWaitTime';
 import { LINE_STATIONS } from '@/lib/constants';
 import { addScheduleConfig } from '@/lib/utils/favorites';
+import { usePreferences } from '@/components/preferences-provider';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog';
 import { Input } from './ui/input';
 import type { Departure } from '@/types';
@@ -66,6 +67,7 @@ export function DepartureBoard({
   const [configName, setConfigName] = useState('');
   const displayedDepartures = departures.slice(0, 10);
   const currentTime = useCurrentTime();
+  const { syncFromStorage } = usePreferences();
   
   // Track when departures change to trigger animations
   const [animationKey, setAnimationKey] = useState(0);
@@ -369,20 +371,27 @@ export function DepartureBoard({
     day: 'numeric',
   });
 
-  const handleSaveConfig = () => {
+  const handleSaveConfig = async () => {
     if (!configName.trim()) return;
     
-    addScheduleConfig({
-      name: configName.trim(),
-      line: selectedLine,
-      selectedStations: selectedStations,
-      direction: direction,
-      filters: filters,
-    });
-    
-    setConfigName('');
-    setSaveDialogOpen(false);
-    onConfigSaved?.();
+    try {
+      await Promise.resolve(
+        addScheduleConfig({
+          name: configName.trim(),
+          line: selectedLine,
+          selectedStations: selectedStations,
+          direction: direction,
+          filters: filters,
+        })
+      );
+      syncFromStorage();
+      onConfigSaved?.();
+    } catch (error) {
+      console.error('Failed to save schedule configuration', error);
+    } finally {
+      setConfigName('');
+      setSaveDialogOpen(false);
+    }
   };
 
   return (
@@ -660,6 +669,7 @@ export function DepartureBoard({
                       onSelect={handleNoticeSelect}
                       isSelected={departureId === selectedId}
                       showExpectedTime={isFirstDelayedStation}
+                      currentTime={currentTime}
                     />
                   </div>
                 );
@@ -726,15 +736,22 @@ interface DepartureBoardRowProps {
   onSelect: (departure: Departure) => void;
   isSelected: boolean;
   showExpectedTime?: boolean; // Only show expected time if this is the first station of a delayed train
+  currentTime: Date;
 }
 
-function DepartureBoardRow({ departure, index, onSelect, isSelected, showExpectedTime = true }: DepartureBoardRowProps) {
+const DepartureBoardRow = React.memo(function DepartureBoardRow({
+  departure,
+  index,
+  onSelect,
+  isSelected,
+  showExpectedTime = true,
+  currentTime,
+}: DepartureBoardRowProps) {
   const departureTime = departure.departure?.expected || departure.departure?.aimed;
   const status = getDepartureStatus(departure);
   const route = getRouteText(departure);
   const station = getStationName(departure.station);
   const isBus = isBusReplacement(departure);
-  const currentTime = useCurrentTime();
   const waitTime = calculateWaitTime(departure, currentTime);
   const category = getStatusCategory(departure);
   const statusColorClass = getStatusColorClass(category);
@@ -848,5 +865,21 @@ function DepartureBoardRow({ departure, index, onSelect, isSelected, showExpecte
       </div>
     </div>
   );
-}
+}, (previous, next) => {
+  const previousStatus = (previous.departure as { status?: string }).status || '';
+  const nextStatus = (next.departure as { status?: string }).status || '';
+  const sameDeparture =
+    previous.departure.service_id === next.departure.service_id &&
+    previous.departure.station === next.departure.station &&
+    previous.departure.departure?.aimed === next.departure.departure?.aimed &&
+    previous.departure.departure?.expected === next.departure.departure?.expected &&
+    previousStatus === nextStatus;
+
+  return (
+    sameDeparture &&
+    previous.isSelected === next.isSelected &&
+    previous.showExpectedTime === next.showExpectedTime &&
+    previous.currentTime.getTime() === next.currentTime.getTime()
+  );
+});
 

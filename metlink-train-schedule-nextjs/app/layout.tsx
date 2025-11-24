@@ -4,6 +4,7 @@ import { Geist_Mono } from "next/font/google"
 import "./globals.css"
 import { Suspense } from "react"
 import { ThemeProvider } from "@/components/theme-provider"
+import { PreferencesProvider } from "@/components/preferences-provider"
 import { ServiceWorkerRegistration } from "./sw-register"
 
 const geistMono = Geist_Mono({
@@ -43,8 +44,10 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange={false}
         >
-          <Suspense>{children}</Suspense>
-          <ServiceWorkerRegistration />
+          <PreferencesProvider>
+            <Suspense>{children}</Suspense>
+            <ServiceWorkerRegistration />
+          </PreferencesProvider>
         </ThemeProvider>
       </body>
     </html>

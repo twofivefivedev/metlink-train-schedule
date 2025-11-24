@@ -6,7 +6,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import dynamic from 'next/dynamic';
 import { LineSelector } from './LineSelector';
 import { LINE_NAMES } from '@/lib/constants';
 import type { LineCode } from '@/lib/constants';
@@ -52,6 +52,30 @@ const COLORS = {
   delayed: '#f59e0b',
   bus_replacement: '#3b82f6',
 };
+
+const IncidentsPieChart = dynamic(
+  () =>
+    import('./IncidentsCharts').then((mod) => mod.IncidentsPieChart),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton />,
+  }
+);
+
+const IncidentsBarChart = dynamic(
+  () =>
+    import('./IncidentsCharts').then((mod) => mod.IncidentsBarChart),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton />,
+  }
+);
+
+function ChartSkeleton() {
+  return (
+    <div className="h-[300px] w-full border-2 border-dashed border-black/30 dark:border-white/30 bg-black/5 dark:bg-white/10 animate-pulse" />
+  );
+}
 
 // Load preferences from localStorage
 function loadPreferences(): { line: LineCode; timeRange: '24h' | '7d' | '30d' } {
@@ -294,31 +318,7 @@ export function IncidentsDashboard() {
 
               {pieData.length > 0 && (
                 <div className="mt-6 [&_.recharts-cartesian-axis-tick_text]:fill-black [&_.recharts-cartesian-axis-tick_text]:dark:fill-white">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie
-                        data={pieData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                        outerRadius={80}
-                        fill="#8884d8"
-                        dataKey="value"
-                      >
-                        {pieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: 'var(--background)',
-                          border: '2px solid var(--foreground)',
-                          color: 'var(--foreground)',
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <IncidentsPieChart data={pieData} />
                 </div>
               )}
             </div>
@@ -335,24 +335,7 @@ export function IncidentsDashboard() {
             <h2 className="font-bold text-lg uppercase mb-1">Incidents Over Time</h2>
           </div>
           <div className="p-6 [&_.recharts-cartesian-axis-tick_text]:fill-black [&_.recharts-cartesian-axis-tick_text]:dark:fill-white [&_.recharts-cartesian-grid_line]:stroke-black [&_.recharts-cartesian-grid_line]:dark:stroke-white">
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" tick={{ fill: 'currentColor' }} />
-                <YAxis tick={{ fill: 'currentColor' }} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'var(--background)',
-                    border: '2px solid var(--foreground)',
-                    color: 'var(--foreground)',
-                  }}
-                />
-                <Legend />
-                <Bar dataKey="cancelled" name="Cancelled" fill={COLORS.cancelled} />
-                <Bar dataKey="delayed" name="Delayed" fill={COLORS.delayed} />
-                <Bar dataKey="bus_replacement" name="Bus Replacement" fill={COLORS.bus_replacement} />
-              </BarChart>
-            </ResponsiveContainer>
+            <IncidentsBarChart data={chartData} />
           </div>
         </div>
       )}

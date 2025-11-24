@@ -15,10 +15,10 @@ import { Button } from '@/components/ui/button';
 import { sortDepartures } from '@/lib/utils/sortUtils';
 import { getRouteText, isBusReplacement } from '@/lib/utils/departureUtils';
 import { DEFAULT_LINE, getDefaultStationsForLine, SERVICE_IDS } from '@/lib/constants';
-import { loadPreferences } from '@/lib/utils/favorites';
 import type { SortOption, SortDirection } from '@/lib/utils/sortUtils';
 import type { Departure } from '@/types';
 import type { LineCode } from '@/lib/constants';
+import { usePreferences } from '@/components/preferences-provider';
 
 export default function Home() {
   const [selectedLine, setSelectedLine] = useState<LineCode>(DEFAULT_LINE);
@@ -37,6 +37,7 @@ export default function Home() {
     stations: selectedStations[selectedLine],
   });
   const alerts = useAlerts(departures);
+  const { preferences } = usePreferences();
   const [direction, setDirection] = useState<'inbound' | 'outbound'>('inbound');
   const [selectedStation, setSelectedStation] = useState<string | null>(null);
   const [routeFilter, setRouteFilter] = useState<'all' | 'express' | 'all-stops'>('all');
@@ -45,14 +46,18 @@ export default function Home() {
 
   // Request notification permission when alerts are enabled
   useEffect(() => {
-    const checkAlerts = async () => {
-      const preferences = await loadPreferences();
-      if (preferences.alerts.enabled && 'Notification' in window && Notification.permission === 'default') {
-        requestNotificationPermission().catch(console.error);
-      }
-    };
-    checkAlerts();
-  }, []);
+    if (!preferences.alerts.enabled) {
+      return;
+    }
+
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      return;
+    }
+
+    if (Notification.permission === 'default') {
+      requestNotificationPermission().catch(console.error);
+    }
+  }, [preferences.alerts.enabled]);
 
   // Reset stations when line changes if not already set
   useEffect(() => {

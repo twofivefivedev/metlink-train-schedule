@@ -29,13 +29,16 @@ describe('CacheRepository', () => {
         outbound: [],
         total: 0,
       };
+      const expiresAt = new Date(Date.now() + 60000).toISOString();
+      const timestamp = new Date().toISOString();
 
       const mockQuery = {
         eq: jest.fn().mockReturnThis(),
         single: jest.fn().mockResolvedValue({
           data: {
             data: mockData,
-            expiresAt: new Date(Date.now() + 60000).toISOString(),
+            expiresAt,
+            timestamp,
           },
           error: null,
         }),
@@ -48,7 +51,11 @@ describe('CacheRepository', () => {
       const repo = getCacheRepository();
       const result = await repo.get('test-key');
 
-      expect(result).toEqual(mockData);
+      expect(result).toEqual({
+        data: mockData,
+        expiresAt,
+        timestamp,
+      });
       expect(mockSupabase.from).toHaveBeenCalledWith('cache_entries');
     });
 

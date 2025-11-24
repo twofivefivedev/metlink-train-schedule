@@ -1,19 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Button } from './ui/button';
 import { Star, Bell, BellOff, X } from 'lucide-react';
 import {
-  loadPreferences,
-  loadPreferencesSync,
-  addFavorite,
-  removeFavorite,
-  updateAlertPreferences,
-  type AlertPreferences,
-  type UserPreferences,
+  type FavoriteRoute,
 } from '@/lib/utils/favorites';
 import { STATION_NAMES, LINE_NAMES } from '@/lib/constants';
 import type { LineCode } from '@/lib/constants';
+import { usePreferences } from '@/components/preferences-provider';
 
 interface FavoritesButtonProps {
   selectedStation: string | null;
@@ -26,44 +21,54 @@ export function FavoritesButton({
   selectedDirection,
   selectedLine,
 }: FavoritesButtonProps) {
-  const [preferences, setPreferences] = useState<UserPreferences>(loadPreferencesSync());
+  const { preferences, updatePreferences } = usePreferences();
   const [isOpen, setIsOpen] = useState(false);
-
-  useEffect(() => {
-    // Load preferences asynchronously (may load from database)
-    const loadPrefs = async () => {
-      const prefs = await loadPreferences();
-      setPreferences(prefs);
-    };
-    loadPrefs();
-  }, []);
 
   const handleAddFavorite = async () => {
     if (!selectedStation) return;
 
-    addFavorite({
-      station: selectedStation,
-      direction: selectedDirection,
-      line: selectedLine,
+    await updatePreferences((previous) => {
+      const exists = previous.favorites.some(
+        (favorite) =>
+          favorite.station === selectedStation &&
+          favorite.direction === selectedDirection &&
+          favorite.line === selectedLine
+      );
+
+      if (exists) {
+        return previous;
+      }
+
+      const newFavorite: FavoriteRoute = {
+        id: `${selectedStation}-${selectedDirection}-${selectedLine}-${Date.now()}`,
+        station: selectedStation,
+        direction: selectedDirection,
+        line: selectedLine,
+        createdAt: new Date().toISOString(),
+      };
+
+      return {
+        ...previous,
+        favorites: [...previous.favorites, newFavorite],
+      };
     });
-    const updatedPrefs = await loadPreferences();
-    setPreferences(updatedPrefs);
   };
 
   const handleRemoveFavorite = async (favoriteId: string) => {
-    removeFavorite(favoriteId);
-    const updatedPrefs = await loadPreferences();
-    setPreferences(updatedPrefs);
+    await updatePreferences((previous) => ({
+      ...previous,
+      favorites: previous.favorites.filter((favorite) => favorite.id !== favoriteId),
+    }));
   };
 
   const handleToggleAlerts = async () => {
-    const newAlerts: AlertPreferences = {
-      ...preferences.alerts,
-      enabled: !preferences.alerts.enabled,
-    };
-    await updateAlertPreferences(newAlerts);
-    const updatedPrefs = await loadPreferences();
-    setPreferences(updatedPrefs);
+    await updatePreferences((previous) => ({
+      ...previous,
+      alerts: {
+        ...previous.alerts,
+        enabled: !previous.alerts.enabled,
+      },
+    }));
   };
 
   const isCurrentRouteFavorite = selectedStation

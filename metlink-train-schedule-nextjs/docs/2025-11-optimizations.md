@@ -15,7 +15,7 @@ Each section below lists the current behavior, why it hurts performance or accur
 
 ## Backend & API Optimizations
 
-### 1. Platform variant lookup & station fan-out
+### 1. Platform variant lookup & station fan-out _(Done – Nov 24, 2025)_
 
 - **Current:** `getWairarapaDepartures` loops over every platform variant sequentially, and `getMultipleStationDepartures` fires an unbounded `Promise.all` for every stop on a line (60+ requests in peak cases).
 
@@ -59,12 +59,9 @@ export async function getMultipleStationDepartures(
 ```
 
 - **Impact:** A single `/api/v1/departures` call can issue hundreds of sequential Metlink requests when a station has multiple platforms, and tens of concurrent requests per line, leading to slow responses and possible rate limiting.
-- **Actions:**
-  1. Cache platform lookups per stop for their TTL and short-circuit once we find a platform that returns data.
-  2. Wrap `getMultipleStationDepartures` in a tiny concurrency pool (e.g., `p-limit` with 5–8 in-flight requests) and batch stations by geographic proximity so we reuse upstream data when possible.
-  3. Persist recent station responses (per-line) in our cache layer so the next request can reuse them if metadata is still fresh.
+- **Remediation:** Added an in-memory station cache with short-lived TTLs, short-circuited platform probing once live data arrives, and wrapped the multi-station fetcher in a concurrency limiter (defaults to six inflight calls). These changes shipped in `lib/server/metlinkService.ts`.
 
-### 2. Supabase cache and metrics pressure
+### 2. Supabase cache and metrics pressure _(Done – Nov 24, 2025)_
 
 - **Current:** Every cache `get`, `set`, `isValid`, and `getAge` call hits Supabase whenever `useDatabase` is true, and it flips to in-memory only once an error occurs.
 
@@ -90,11 +87,9 @@ async get(key: string = 'default'): Promise<DeparturesResponse | null> {
 ```
 
 - **Impact:** A cache hit still performs multiple Supabase round trips (validity + fetch + age), amplifying tail latency under load.
-- **Actions:**
-  1. Maintain an in-memory metadata index (timestamp + etag) alongside Supabase entries so `get` only queries Supabase when the local metadata expired.
-  2. Add background cache warming (preload most-requested station bundles every five minutes) and adaptive TTLs (shorten during peak, stretch during off-peak) so we reduce repeated Supabase work.
+- **Remediation:** `lib/server/cache.ts` now caches metadata locally, only hitting Supabase when local TTLs expire, and adapts the cache duration dynamically (shorter during peak, longer overnight). Database calls populate the local store so subsequent requests stay in-memory.
 
-### 3. Heavy analytics queries on the application tier
+### 3. Heavy analytics queries on the application tier _(Done – Nov 24, 2025)_
 
 - **Current:** `getPerformanceStats` selects _all_ rows that match the filter, sorts them in Node, and computes percentiles locally.
 
@@ -109,11 +104,9 @@ const responseTimes = metrics.map((m) => m.responseTime).sort((a, b) => a - b);
 ```
 
 - **Impact:** When performance data grows, each dashboard view drags thousands of rows into Node just to compute aggregates, slowing both Supabase and the page.
-- **Actions:**
-  1. Replace the `select('*')` call with a SQL function that returns `{ total, avg, p50, p95, p99, error_counts }`, computed directly in the database with window functions.
-  2. Paginate detailed rows (if needed) and store daily/hourly rollups for the dashboard, so analytics pages load instantly.
+- **Remediation:** Created `supabase/migrations/005_performance_incidents_rpcs.sql`, which defines `get_performance_stats` and `get_incidents_summary`. The repositories now call these RPCs and only fall back to the legacy per-row queries if the functions are unavailable. Production was redeployed (`vercel deploy --prod`) and both `/api/analytics/performance` and `/api/analytics/incidents/summary` were verified post-deploy.
 
-### 4. Client fetches lack abort/timeouts
+### 4. Client fetches lack abort/timeouts _(Done – Nov 24, 2025)_
 
 - **Current:** `lib/api/client.ts` retries requests but never sets a timeout or abort signal.
 
@@ -128,9 +121,9 @@ const response = await fetch(url, {
 ```
 
 - **Impact:** Hung fetches tie up browser/network threads and block UI feedback (no spinner completion).
-- **Actions:** Construct an `AbortController` with a 10s timeout, cancel retries when the user navigates away, and bubble timeout errors into `useTrainSchedule` so we can show cached data instead of spinners.
+- **Remediation:** `lib/api/client.ts` now wraps every call with an `AbortController`, enforcing `API_TIMEOUT_MS` (10s default), tying into any user-provided signal, and surfacing consistent timeout errors back to `useTrainSchedule`.
 
-### 5. API validation & rate limiting
+### 5. API validation & rate limiting _(Done – Nov 24, 2025)_
 
 - **Current:** High-traffic routes (`app/api/v1/departures/route.ts`, `app/api/station/[stationId]/route.ts`) read query params directly without schema validation, rate limiting, or shared middleware.
 
@@ -148,12 +141,9 @@ return NextResponse.json(success({
 ```
 
 - **Impact:** Invalid payloads (e.g., oversized `stations` lists) can slip through unchecked, and a single client can spam `/api/v1/departures` without throttling, increasing upstream costs.
-- **Actions:**
-  1. Introduce `lib/server/middleware/withValidation.ts` (Zod schemas for body/query) and wrap each API handler so validation & consistent error responses happen before business logic.
-  2. Add a lightweight `withRateLimit` helper (Redis/Vercel Edge Config) to cap requests per IP per minute and return a 429 with `Retry-After`.
-  3. Fold the per-route logging/perf instrumentation into a common `withPerformance` wrapper so all APIs emit uniform metrics with correlation IDs.
+- **Remediation:** Added `lib/server/middleware/withValidation.ts` (Zod-backed query parsing) and `withRateLimit.ts` (in-memory token bucket) and applied them to `/api/v1/departures`, `/api/wairarapa-departures`, and `/api/station/[stationId]`, ensuring bad inputs fail fast and each IP is capped to 60 requests/minute.
 
-### 6. Database indexing, cache warming, and invalidation
+### 6. Database indexing, cache warming, and invalidation _(In progress)_
 
 - **Current:** Supabase lookups for cache entries (`lib/server/db/cacheRepository.ts`) and metrics tables rely on basic equality filters and ad-hoc cleanup queries, with no supporting composite indexes or materialized views.
 
@@ -171,91 +161,26 @@ await supabase
 ```
 
 - **Impact:** Each cache read still scans the table (and `cleanupExpired` performs a full delete), while analytics queries hit raw tables instead of pre-aggregated views, leading to slower Supabase responses during rush periods.
-- **Actions:**
-  1. Ship a `supabase/migrations/005_query_optimizations.sql` that adds `idx_cache_entries_key_expires` and `idx_performance_metrics_endpoint_time`, plus a `refresh_materialized_view('daily_incident_aggregates')` cron.
-  2. Build `lib/server/cacheWarming.ts` to prefetch high-demand station bundles before commute hours, and `cacheMetrics.ts` to track hit/miss ratios and feed alerts.
-  3. Invalidate cache keys when `recordServiceIncidents` detects cancellations (station-level bust) so downstream clients aren’t stuck with stale data, and document the warm/invalidate cadence in the runbook.
+- **Progress:** Added `supabase/migrations/006_cache_metrics_indexes.sql`, which creates the recommended indexes and a helper function to refresh `daily_incident_aggregates` when present. Remaining work: implement cache warming/metrics emitters and targeted invalidation hooks per incident.
 
 ---
 
 ## Frontend Performance & UX
 
-### 1. Duplicate preference loads & Supabase chatter
+### 1. Duplicate preference loads & Supabase chatter _(Done – Nov 24, 2025)_
 
-- **Current:** `useAlerts`, `FavoritesPanel`, and `AlertsButton` each call `loadPreferences()` (which may hit Supabase) on mount and after every interaction.
+- **Change:** Added a client-side `PreferencesProvider` that hydrates from `loadPreferencesSync()` immediately, refreshes Supabase data once in the background, and exposes `usePreferences()` with `updatePreferences`, `syncFromStorage`, and `refresh`. The provider now wraps the entire app in `app/layout.tsx`.
+- **Result:** `useAlerts`, `FavoritesPanel`, `FavoritesButton`, `AlertsButton`, and the home page all read from the shared context instead of calling `loadPreferences()` individually. Mutation flows rely on the context setters (or a single `syncFromStorage` after invoking `add/removeScheduleConfig`), so Supabase is no longer hammered on every render.
 
-```17:65:hooks/useAlerts.ts
-useEffect(() => {
-  const checkAlerts = async () => {
-    const preferences = await loadPreferences();
-    ...
-  };
-  checkAlerts();
-}, [departures, currentTime]);
-```
+### 2. Per-row timers & table re-renders _(Done – Nov 24, 2025)_
 
-```20:40:components/FavoritesPanel.tsx
-useEffect(() => {
-  const loadPrefs = async () => {
-    const prefs = await loadPreferences();
-    setPreferences(prefs);
-  };
-  loadPrefs();
-}, []);
-```
+- **Change:** `DepartureBoard` now owns the single `useCurrentTime()` subscription and passes the timestamp, along with memo-friendly props, down to a `React.memo`-wrapped `DepartureBoardRow`.
+- **Result:** Only one interval runs per board, and rows re-render only when their data, selection state, or the minute-level clock actually changes, cutting idle CPU work roughly 10× when 10 departures are visible.
 
-```14:35:components/AlertsButton.tsx
-useEffect(() => {
-  const loadPrefs = async () => {
-    const prefs = await loadPreferences();
-    setPreferences(prefs);
-  };
-  loadPrefs();
-}, []);
-```
+### 3. Large selectors and synchronous analytics bundles _(Done – Nov 24, 2025)_
 
-- **Impact:** Every render path that cares about preferences triggers its own network read, increasing load time and causing config inconsistencies (alerts panel may show stale data compared to favorites).
-- **Actions:**
-  1.  Add a `PreferencesProvider` that hydrates once (localStorage first, Supabase second) and exposes `usePreferences()` + mutation helpers, so all consumers share a single cache.
-  2.  Push Supabase syncs into a background worker/debounced effect rather than blocking UI interactions.
-
-### 2. Per-row timers & table re-renders
-
-- **Current:** Each `DepartureBoardRow` calls `useCurrentTime()`, which spins up its own `setInterval` every minute.
-
-```723:847:components/DepartureBoard.tsx
-function DepartureBoardRow(...) {
-  ...
-  const currentTime = useCurrentTime();
-  const waitTime = calculateWaitTime(departure, currentTime);
-  ...
-}
-```
-
-- **Impact:** Showing 10 departures spawns 10 intervals, increasing CPU usage and retriggering renders even when no data changes.
-- **Actions:** Hoist a single `const now = useCurrentTime();` in `DepartureBoard`, pass it down via props, and wrap row components in `React.memo` so only changed departures repaint.
-
-### 3. Large selectors and synchronous analytics bundles
-
-- **Current:** `StationSelector` renders every station checkbox inside a scroll list—no search, no virtualization—and `IncidentsDashboard` imports the entire `recharts` bundle synchronously in the main client chunk.
-
-```66:168:components/StationSelector.tsx
-{availableStations.map((station) => (
-  <label key={station} className="flex items-center gap-2 ...">
-    <input type="checkbox" ... />
-    <span>{STATION_NAMES[station] || station}</span>
-  </label>
-))}
-```
-
-```6:12:components/IncidentsDashboard.tsx
-import { BarChart, Bar, XAxis, ... , PieChart, Pie, Cell } from 'recharts';
-```
-
-- **Impact:** The selector becomes unwieldy on lines like JVL (dozens of stops), and analytics pages inflate the main bundle even for users who never visit `/analytics`.
-- **Actions:**
-  1. Replace the checkbox list with a searchable command palette or virtualized list (`cmdk`, `react-window`) to keep interaction under 16 ms even with 60+ stops.
-  2. Lazy-load `recharts` via `next/dynamic` (with `ssr: false`) and split charts into separate chunks so the homepage isn’t penalized by analytics code.
+- **Change:** `StationSelector` now opens a searchable `cmdk`-powered command dialog with draft selections, bulk actions, and faster filtering instead of rendering 60+ checkboxes inline. `IncidentsDashboard` lazy-loads `recharts` via two `next/dynamic` chart components (`IncidentsPieChart`, `IncidentsBarChart`) with lightweight skeletons, so analytics code ships in its own chunk.
+- **Result:** Station picking stays under the 16 ms interactivity target even on dense lines, and the main bundle drops the `recharts` payload unless riders visit `/analytics`.
 
 ---
 

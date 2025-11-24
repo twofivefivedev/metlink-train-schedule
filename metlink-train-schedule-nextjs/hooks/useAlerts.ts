@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { loadPreferences } from '@/lib/utils/favorites';
+import { usePreferences } from '@/components/preferences-provider';
 import { getAlertsForConfigs } from '@/lib/utils/alertUtils';
 import { useCurrentTime } from './useWaitTime';
 import type { Departure } from '@/types';
@@ -17,51 +17,51 @@ interface DeparturesData {
 export function useAlerts(departures: DeparturesData): AlertCondition[] {
   const [alerts, setAlerts] = useState<AlertCondition[]>([]);
   const currentTime = useCurrentTime();
+  const { preferences } = usePreferences();
 
   useEffect(() => {
-    const checkAlerts = async () => {
-      const preferences = await loadPreferences();
-      if (!preferences.alerts.enabled || preferences.configs.length === 0) {
-        setAlerts([]);
-        return;
-      }
+    if (!preferences.alerts.enabled || preferences.configs.length === 0) {
+      setAlerts([]);
+      return;
+    }
 
-      const allDepartures = [...departures.inbound, ...departures.outbound];
-      const alertConditions = getAlertsForConfigs(
-        allDepartures,
-        preferences.configs,
-        preferences.alerts,
-        currentTime
-      );
+    const allDepartures = [...departures.inbound, ...departures.outbound];
+    const alertConditions = getAlertsForConfigs(
+      allDepartures,
+      preferences.configs,
+      preferences.alerts,
+      currentTime
+    );
 
-      setAlerts(alertConditions);
+    setAlerts(alertConditions);
 
-      // Show browser notifications for new alerts
-      if (alertConditions.length > 0 && 'Notification' in window && Notification.permission === 'granted') {
-        alertConditions.forEach(condition => {
-          const notification = new Notification('Metlink Alert', {
-            body: condition.message,
-            icon: '/favicon.ico',
-            tag: condition.departure.service_id, // Prevent duplicate notifications
-          });
-
-          // Also try service worker notification if available
-          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({
-              type: 'SHOW_NOTIFICATION',
-              title: 'Metlink Alert',
-              options: {
-                body: condition.message,
-                icon: '/favicon.ico',
-                tag: condition.departure.service_id,
-              },
-            });
-          }
+    if (
+      alertConditions.length > 0 &&
+      typeof window !== 'undefined' &&
+      'Notification' in window &&
+      Notification.permission === 'granted'
+    ) {
+      alertConditions.forEach((condition) => {
+        const notification = new Notification('Metlink Alert', {
+          body: condition.message,
+          icon: '/favicon.ico',
+          tag: condition.departure.service_id,
         });
-      }
-    };
-    checkAlerts();
-  }, [departures, currentTime]);
+
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'SHOW_NOTIFICATION',
+            title: 'Metlink Alert',
+            options: {
+              body: condition.message,
+              icon: '/favicon.ico',
+              tag: condition.departure.service_id,
+            },
+          });
+        }
+      });
+    }
+  }, [departures, currentTime, preferences]);
 
   return alerts;
 }
