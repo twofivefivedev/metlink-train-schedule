@@ -12,8 +12,14 @@ type CacheEntry = Database['public']['Tables']['cache_entries']['Row'];
 type CacheEntryInsert = Database['public']['Tables']['cache_entries']['Insert'];
 type CacheEntryUpdate = Database['public']['Tables']['cache_entries']['Update'];
 
+export interface CacheRecord {
+  data: DeparturesResponse;
+  expiresAt: string;
+  timestamp: string;
+}
+
 export interface CacheRepository {
-  get(key: string): Promise<DeparturesResponse | null>;
+  get(key: string): Promise<CacheRecord | null>;
   set(key: string, data: DeparturesResponse, expiresAt: Date): Promise<void>;
   delete(key: string): Promise<void>;
   deleteAll(): Promise<void>;
@@ -22,12 +28,12 @@ export interface CacheRepository {
 }
 
 class CacheRepositoryImpl implements CacheRepository {
-  async get(key: string): Promise<DeparturesResponse | null> {
+  async get(key: string): Promise<CacheRecord | null> {
     try {
       const supabase = getSupabaseAdminClient();
       const { data, error } = await supabase
         .from('cache_entries')
-        .select('data, expiresAt')
+        .select('data, expiresAt, timestamp')
         .eq('key', key)
         .single();
 
@@ -44,7 +50,7 @@ class CacheRepositoryImpl implements CacheRepository {
       }
 
       // Type assertion for Supabase query result
-      const entry = data as { data: Json; expiresAt: string } | null;
+      const entry = data as { data: Json; expiresAt: string; timestamp: string } | null;
       if (!entry) {
         return null;
       }
@@ -54,7 +60,11 @@ class CacheRepositoryImpl implements CacheRepository {
         return null;
       }
 
-      return entry.data as unknown as DeparturesResponse;
+      return {
+        data: entry.data as unknown as DeparturesResponse,
+        expiresAt: entry.expiresAt,
+        timestamp: entry.timestamp,
+      };
     } catch (error) {
       logger.warn('Cache repository get failed', {
         error: error instanceof Error ? error.message : String(error),

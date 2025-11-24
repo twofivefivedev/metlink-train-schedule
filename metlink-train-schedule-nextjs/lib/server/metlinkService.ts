@@ -10,6 +10,55 @@ import { retry } from './retry';
 import { logger } from './logger';
 import type { Departure, MetlinkApiResponse } from '@/types';
 
+const parsedPlatformTtl = process.env.PLATFORM_CACHE_TTL_MS
+  ? parseInt(process.env.PLATFORM_CACHE_TTL_MS, 10)
+  : NaN;
+const PLATFORM_CACHE_TTL_MS = Number.isFinite(parsedPlatformTtl) ? parsedPlatformTtl : 60 * 1000;
+
+const parsedConcurrency = process.env.STATION_FETCH_CONCURRENCY
+  ? parseInt(process.env.STATION_FETCH_CONCURRENCY, 10)
+  : NaN;
+const STATION_FETCH_CONCURRENCY = Number.isFinite(parsedConcurrency) ? parsedConcurrency : 6;
+
+interface CachedStationDepartures {
+  expiresAt: number;
+  departures: Departure[];
+}
+
+const stationDeparturesCache = new Map<string, CachedStationDepartures>();
+
+class ConcurrencyLimiter {
+  private active = 0;
+  private readonly queue: Array<() => void> = [];
+
+  constructor(private readonly limit: number) {}
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.limit <= 0) {
+      return fn();
+    }
+
+    if (this.active >= this.limit) {
+      await new Promise<void>((resolve) => this.queue.push(resolve));
+    }
+
+    this.active++;
+    try {
+      return await fn();
+    } finally {
+      this.active--;
+      const next = this.queue.shift();
+      if (next) {
+        next();
+      }
+    }
+  }
+}
+
+const stationFetchLimiter = new ConcurrencyLimiter(
+  Number.isFinite(STATION_FETCH_CONCURRENCY) ? STATION_FETCH_CONCURRENCY : 6
+);
+
 /**
  * Request metrics tracker
  * Tracks API call volume to monitor usage and prevent rate limiting
@@ -175,6 +224,13 @@ export async function getWairarapaDepartures(
   serviceId: string = SERVICE_IDS.WAIRARAPA_LINE
 ): Promise<Departure[]> {
   try {
+    const cacheKey = `${serviceId}-${stopId}`;
+    const cached = stationDeparturesCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      logger.debug('Station cache hit', { stopId, serviceId });
+      return cached.departures.map((departure) => ({ ...departure }));
+    }
+
     // Get platform variants for the station ID
     const platformVariants = getStationPlatformVariants(stopId);
     let allDepartures: Departure[] = [];
@@ -185,6 +241,9 @@ export async function getWairarapaDepartures(
         const data = await getStopPredictions(platformId);
     const departures = data.departures || [];
         allDepartures = allDepartures.concat(departures);
+        if (allDepartures.length > 0) {
+          break; // short-circuit once we have data
+        }
       } catch (error) {
         // If a platform variant fails, continue with others
         logger.debug(`Failed to fetch predictions for platform ${platformId}, trying next variant`);
@@ -219,7 +278,12 @@ export async function getWairarapaDepartures(
       })),
     });
 
-    return uniqueDepartures;
+    stationDeparturesCache.set(cacheKey, {
+      departures: uniqueDepartures,
+      expiresAt: Date.now() + PLATFORM_CACHE_TTL_MS,
+    });
+
+    return uniqueDepartures.map((departure) => ({ ...departure }));
   } catch (error) {
     logger.error(`Failed to fetch departures for ${stopId}`, error as Error);
     throw error;
@@ -233,7 +297,8 @@ export async function getMultipleStationDepartures(
   stopIds: string[],
   serviceId: string = SERVICE_IDS.WAIRARAPA_LINE
 ): Promise<Departure[][]> {
-  const promises = stopIds.map(async (stopId) => {
+  const promises = stopIds.map((stopId) =>
+    stationFetchLimiter.run(async () => {
     try {
       const departures = await getWairarapaDepartures(stopId, serviceId);
       return departures.map(departure => ({
@@ -255,7 +320,8 @@ export async function getMultipleStationDepartures(
       });
       return []; // Return empty array on error for this station
     }
-  });
+    })
+  );
 
   return Promise.all(promises);
 }

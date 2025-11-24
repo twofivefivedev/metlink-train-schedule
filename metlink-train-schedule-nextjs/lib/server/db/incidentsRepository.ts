@@ -50,6 +50,65 @@ export interface IncidentsRepository {
 }
 
 class IncidentsRepositoryImpl implements IncidentsRepository {
+  private async tryGetSummaryFromRpc(options: {
+    serviceId?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<{
+    total: number;
+    cancelled: number;
+    delayed: number;
+    busReplacement: number;
+    byType: Record<IncidentType, number>;
+  } | null> {
+    try {
+      const supabase = getSupabaseAdminClient();
+      const { data, error } = await supabase.rpc('get_incidents_summary', {
+        service_id_filter: options.serviceId ?? null,
+        start_time: options.startDate?.toISOString() ?? null,
+        end_time: options.endDate?.toISOString() ?? null,
+      });
+
+      if (error || !data) {
+        if (error && !error.message.toLowerCase().includes('function')) {
+          logger.warn('Incidents summary RPC failed', {
+            error: error.message,
+            serviceId: options.serviceId ?? 'all',
+          });
+        }
+        return null;
+      }
+
+      const aggregate = Array.isArray(data) ? data[0] : data;
+      if (!aggregate) {
+        return null;
+      }
+
+      const cancelled = aggregate.cancelled ?? aggregate.canceled ?? 0;
+      const delayed = aggregate.delayed ?? 0;
+      const busReplacement = aggregate.bus_replacement ?? 0;
+      const total =
+        aggregate.total ?? cancelled + delayed + busReplacement;
+
+      return {
+        total,
+        cancelled,
+        delayed,
+        busReplacement,
+        byType: {
+          cancelled,
+          delayed,
+          bus_replacement: busReplacement,
+        },
+      };
+    } catch (error) {
+      logger.debug('Incidents summary RPC unavailable, falling back to query', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
   async insert(incidents: ServiceIncidentRecord[]): Promise<void> {
     if (incidents.length === 0) {
       return;
@@ -165,6 +224,11 @@ class IncidentsRepositoryImpl implements IncidentsRepository {
     byType: Record<IncidentType, number>;
   }> {
     try {
+      const aggregated = await this.tryGetSummaryFromRpc(options);
+      if (aggregated) {
+        return aggregated;
+      }
+
       const supabase = getSupabaseAdminClient();
       let query = supabase.from('service_incidents').select('incidentType');
 
