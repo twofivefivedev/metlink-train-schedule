@@ -2,6 +2,7 @@
  * Analytics Page
  * Displays service incidents analytics and API performance metrics
  */
+'use client';
 
 import { Suspense } from 'react';
 import dynamic from 'next/dynamic';
