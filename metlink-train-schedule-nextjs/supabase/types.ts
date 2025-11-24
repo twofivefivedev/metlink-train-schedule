@@ -337,6 +337,35 @@ export interface Database {
         }
         Returns: number
       }
+      get_performance_stats: {
+        Args: {
+          endpoint_filter?: string | null
+          start_time?: string | null
+          end_time?: string | null
+        }
+        Returns: Array<{
+          total: number | null
+          average_response_time: number | null
+          p50: number | null
+          p95: number | null
+          p99: number | null
+          error_rate: number | null
+          status_codes: Json | null
+        }>
+      }
+      get_incidents_summary: {
+        Args: {
+          service_id_filter?: string | null
+          start_time?: string | null
+          end_time?: string | null
+        }
+        Returns: Array<{
+          total: number | null
+          cancelled: number | null
+          delayed: number | null
+          bus_replacement: number | null
+        }>
+      }
     }
   }
 }
