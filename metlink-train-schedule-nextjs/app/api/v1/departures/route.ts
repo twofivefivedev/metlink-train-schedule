@@ -27,6 +27,40 @@ async function baseHandler(
   const requestContext = createRequestContext(request);
   const perfContext = createPerformanceContext(request, '/api/v1/departures');
   let cacheKey = '';
+  const { line, stations, prewarm } = validated;
+  const isCronRequest = request.headers.has('x-vercel-cron');
+  const manualPrewarmRequested = Boolean(prewarm);
+  const shouldPrewarm = isCronRequest || manualPrewarmRequested;
+  const prewarmPromise = shouldPrewarm
+    ? prewarmStationDepartures({ reason: isCronRequest ? 'cron' : 'manual' })
+    : null;
+  let prewarmSummary: Awaited<ReturnType<typeof prewarmStationDepartures>> | null = null;
+  let prewarmHandled = false;
+  const resolvePrewarm = async () => {
+    if (!prewarmPromise || prewarmHandled) {
+      return prewarmSummary;
+    }
+    prewarmHandled = true;
+    if (isCronRequest) {
+      try {
+        prewarmSummary = await prewarmPromise;
+      } catch (error) {
+        logger.warn('Station cache prewarm failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        prewarmSummary = null;
+      }
+    } else {
+      prewarmPromise.catch((error) => {
+        logger.warn('Station cache prewarm (async) failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+      prewarmSummary = null;
+    }
+    return prewarmSummary;
+  };
+
   try {
     // Verify environment variable is available
     const apiKey = process.env.METLINK_API_KEY;
@@ -45,46 +79,12 @@ async function baseHandler(
     }
 
     // Get station list and line from query params or use defaults
-    const { line, stations, prewarm } = validated;
     const stationsParam = stations || null;
     const lineParam = line || 'WRL';
     
     // Validate line code and get service ID
     const serviceId = getServiceIdFromLineCode(lineParam);
 
-    const isCronRequest = request.headers.has('x-vercel-cron');
-    const manualPrewarmRequested = Boolean(prewarm);
-    const shouldPrewarm = isCronRequest || manualPrewarmRequested;
-    const prewarmPromise = shouldPrewarm
-      ? prewarmStationDepartures({ reason: isCronRequest ? 'cron' : 'manual' })
-      : null;
-    let prewarmSummary: Awaited<ReturnType<typeof prewarmStationDepartures>> | null = null;
-    let prewarmHandled = false;
-    const resolvePrewarm = async () => {
-      if (!prewarmPromise || prewarmHandled) {
-        return prewarmSummary;
-      }
-      prewarmHandled = true;
-      if (isCronRequest) {
-        try {
-          prewarmSummary = await prewarmPromise;
-        } catch (error) {
-          logger.warn('Station cache prewarm failed', {
-            error: error instanceof Error ? error.message : String(error),
-          });
-          prewarmSummary = null;
-        }
-      } else {
-        prewarmPromise.catch((error) => {
-          logger.warn('Station cache prewarm (async) failed', {
-            error: error instanceof Error ? error.message : String(error),
-          });
-        });
-        prewarmSummary = null;
-      }
-      return prewarmSummary;
-    };
-    
     // If no stations specified, use all stations for the line
     const parsedStations = parseStationsParam(stationsParam || undefined);
     const stationCodes = parsedStations?.length
