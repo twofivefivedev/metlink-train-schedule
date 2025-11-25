@@ -97,6 +97,11 @@ export interface Database {
           expectedTime: string | null
           incidentType: 'cancelled' | 'delayed' | 'bus_replacement'
           delayMinutes: number | null
+          cause: string | null
+          lineSegment: string | null
+          replacementMode: string | null
+          replacementOperator: string | null
+          impactedStations: string[] | null
           details: Json | null
           createdAt: string
         }
@@ -111,6 +116,11 @@ export interface Database {
           expectedTime?: string | null
           incidentType: 'cancelled' | 'delayed' | 'bus_replacement'
           delayMinutes?: number | null
+          cause?: string | null
+          lineSegment?: string | null
+          replacementMode?: string | null
+          replacementOperator?: string | null
+          impactedStations?: string[] | null
           details?: Json | null
           createdAt?: string
         }
@@ -125,6 +135,11 @@ export interface Database {
           expectedTime?: string | null
           incidentType?: 'cancelled' | 'delayed' | 'bus_replacement'
           delayMinutes?: number | null
+          cause?: string | null
+          lineSegment?: string | null
+          replacementMode?: string | null
+          replacementOperator?: string | null
+          impactedStations?: string[] | null
           details?: Json | null
           createdAt?: string
         }

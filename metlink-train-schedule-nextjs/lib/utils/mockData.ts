@@ -76,20 +76,28 @@ function createMockDeparture(
 
   // Add cancellation status
   if (options.cancelled) {
-    (departure as unknown as { status: string }).status = 'canceled';
+    departure.status = 'canceled';
   }
 
   // Add delay information
   if (options.delayed && !options.cancelled) {
     const delayMinutes = options.delayMinutes || 15;
-    (departure as unknown as { delay: string }).delay = `PT${delayMinutes}M`;
-    (departure as unknown as { status: string }).status = 'delayed';
+    departure.delay = `PT${delayMinutes}M`;
+    departure.status = 'delayed';
   }
 
   // Add bus replacement
   if (options.busReplacement) {
     departure.destination.name = 'Bus replacement service';
-    (departure as unknown as { operator: string }).operator = 'bus';
+    departure.operator = 'bus';
+    departure.disruption = {
+      summary: 'Service replaced by bus',
+      replacement: {
+        mode: 'bus',
+        operator: 'Metlink Bus',
+      },
+      lineSegment: `${station} → ${destination.stop_id}`,
+    };
   }
 
   return departure;
