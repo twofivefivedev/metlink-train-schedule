@@ -7,6 +7,7 @@ import { getSupabaseAdminClient } from '../supabaseAdmin';
 import { logger } from '../logger';
 import type { Database } from '@/supabase/types';
 import type { Departure } from '@/types';
+import { getStatus } from '../validation/metlink';
 
 type HistoricalDeparture = Database['public']['Tables']['historical_departures']['Row'];
 type HistoricalDepartureInsert = Database['public']['Tables']['historical_departures']['Insert'];
@@ -55,7 +56,7 @@ class HistoricalRepositoryImpl implements HistoricalRepository {
           destinationStopId: departure.destination?.stop_id || '',
           aimedTime: aimedTime.toISOString(),
           expectedTime: expectedTime?.toISOString() || null,
-          status: (departure as unknown as { status?: string }).status || null,
+          status: getStatus(departure) || null,
         };
       });
 

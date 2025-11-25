@@ -7,6 +7,7 @@ import type { Departure } from '@/types';
 import type { AlertPreferences, ScheduleConfig } from './favorites';
 import { getImportantNotices, calculateWaitTime } from './departureUtils';
 import { normalizeStationId } from '@/lib/constants';
+import { getStatus } from '@/lib/server/validation/metlink';
 
 export interface AlertCondition {
   type: 'delay' | 'cancellation' | 'approaching';
@@ -42,7 +43,7 @@ export function checkAlertConditions(
 
   // Check for cancellation
   if (alerts.notifyOnCancellation) {
-    const status = (departure as unknown as { status?: string }).status;
+    const status = getStatus(departure);
     if (status === 'canceled' || status === 'cancelled') {
       return {
         type: 'cancellation',

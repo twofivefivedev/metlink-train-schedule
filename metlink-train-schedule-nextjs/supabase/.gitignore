@@ -1,8 +1,17 @@
 # Supabase
 .branches
-.temp
+.temp/
+*.tmp
 
 # dotenvx
 .env.keys
 .env.local
 .env.*.local
+
+# Database dumps
+*.sql.backup
+*.dump
+
+# Logs
+*.log
+logs/

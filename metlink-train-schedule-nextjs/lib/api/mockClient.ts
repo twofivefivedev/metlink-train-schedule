@@ -3,9 +3,10 @@
  * Returns mock data instead of calling the real API
  */
 
-import { generateMockDeparturesResponse, generateMockStationDepartures, type MockScenario } from '@/lib/utils/mockData';
+import { generateMockDeparturesResponse, generateMockStationDepartures, type MockScenario } from '@/__mocks__/mockData';
 import type { ApiResponse, DeparturesResponse, StationDeparturesResponse } from '@/types';
 import type { LineCode } from '@/lib/constants';
+import { getStatus } from '@/lib/server/validation/metlink';
 
 /**
  * Get mock scenario from URL query parameter or default
@@ -58,7 +59,7 @@ export async function getLineDeparturesMock(
   // Debug: log delayed trains in the response
   if (typeof console !== 'undefined' && scenario === 'delayed') {
     const delayedTrains = [...mockData.inbound, ...mockData.outbound].filter(dep => {
-      const status = (dep as unknown as { status?: string }).status;
+      const status = getStatus(dep);
       return status === 'delayed';
     });
     console.log('[Mock Client] Delayed trains found:', delayedTrains.length, delayedTrains.slice(0, 2));
