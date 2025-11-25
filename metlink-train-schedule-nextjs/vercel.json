@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/v1/departures?prewarm=true",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
