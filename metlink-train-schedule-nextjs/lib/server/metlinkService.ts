@@ -118,7 +118,13 @@ export async function getWairarapaDepartures(
 
     return uniqueDepartures.map((departure) => ({ ...departure }));
   } catch (error) {
-    requestLogger.error(`Failed to fetch departures for ${stopId}`, error instanceof Error ? error : new Error(String(error)), {
+    const err = error instanceof Error ? error : new Error(String(error));
+    requestLogger.error(`Failed to fetch departures for ${stopId}`, {
+      error: {
+        name: err.name,
+        message: err.message,
+        stack: err.stack,
+      },
       stopId,
       serviceId,
     });
