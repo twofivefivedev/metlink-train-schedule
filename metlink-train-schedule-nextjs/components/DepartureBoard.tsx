@@ -73,17 +73,40 @@ export function DepartureBoard({
 }: DepartureBoardProps) {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [configName, setConfigName] = useState('');
-  const noticeSample = useMemo(() => departures.slice(0, NOTICE_SAMPLE_SIZE), [departures]);
   const currentTime = useCurrentTime();
   const { syncFromStorage } = usePreferences();
+  const [startOfTodayMs, endOfTodayMs] = useMemo(() => {
+    const start = new Date(currentTime);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(currentTime);
+    end.setHours(23, 59, 59, 999);
+    return [start.getTime(), end.getTime()];
+  }, [currentTime]);
+  const todaysDepartures = useMemo(() => {
+    if (!departures.length) {
+      return [];
+    }
+    return departures.filter((departure) => {
+      const departureTime = departure.departure?.expected || departure.departure?.aimed;
+      if (!departureTime) {
+        return false;
+      }
+      const departureTimestamp = new Date(departureTime).getTime();
+      return departureTimestamp >= startOfTodayMs && departureTimestamp <= endOfTodayMs;
+    });
+  }, [departures, startOfTodayMs, endOfTodayMs]);
+  const noticeSample = useMemo(
+    () => todaysDepartures.slice(0, NOTICE_SAMPLE_SIZE),
+    [todaysDepartures]
+  );
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const rowVirtualizer = useVirtualizer({
-    count: departures.length,
+    count: todaysDepartures.length,
     getScrollElement: () => tableContainerRef.current,
     estimateSize: () => ESTIMATED_ROW_HEIGHT,
     overscan: 8,
     getItemKey: (index) => {
-      const departure = departures[index];
+      const departure = todaysDepartures[index];
       if (!departure) {
         return `departure-${index}`;
       }
@@ -100,7 +123,7 @@ export function DepartureBoard({
   const delayedTrainFirstStations = useMemo(() => {
     const delayedTrains = new Map<string, Departure>();
     
-    departures.forEach(dep => {
+    todaysDepartures.forEach(dep => {
       const category = getStatusCategory(dep);
       if (category === 'delayed') {
         const tripId = (dep as unknown as { trip_id?: string }).trip_id;
@@ -130,7 +153,7 @@ export function DepartureBoard({
     });
     
     return firstStationIds;
-  }, [departures]);
+  }, [todaysDepartures]);
   
   // Track selected notice for service notice panel
   const [selectedNotice, setSelectedNotice] = useState<{
@@ -141,10 +164,10 @@ export function DepartureBoard({
 
   // Calculate wait time for the next available (non-cancelled, future) departure
   const nextDepartureWaitTime = useMemo(() => {
-    if (departures.length === 0) return null;
+    if (todaysDepartures.length === 0) return null;
     
     // Find the first non-cancelled departure that hasn't departed yet
-    const nextAvailableDeparture = departures.find(dep => {
+    const nextAvailableDeparture = todaysDepartures.find(dep => {
       const status = (dep as unknown as { status?: string }).status;
       if (status === 'canceled' || status === 'cancelled') {
         return false;
@@ -171,7 +194,7 @@ export function DepartureBoard({
       minutes: waitTime.minutes !== null ? waitTime.minutes : null,
       station: getStationName(nextAvailableDeparture.station),
     };
-  }, [departures, currentTime]);
+  }, [todaysDepartures, currentTime]);
 
   // Find departures with notices (cancelled, delayed, bus)
   const departuresWithNotices = useMemo(() => {
@@ -188,7 +211,7 @@ export function DepartureBoard({
       const currentId = (selectedNotice.departure as unknown as { trip_id?: string }).trip_id || 
                        `${selectedNotice.departure.service_id}-${selectedNotice.departure.station}-${selectedNotice.departure.departure?.aimed}`;
       
-      const stillExists = departures.some(dep => {
+      const stillExists = todaysDepartures.some(dep => {
         const depId = (dep as unknown as { trip_id?: string }).trip_id || 
                      `${dep.service_id}-${dep.station}-${dep.departure?.aimed}`;
         return depId === currentId;
@@ -198,7 +221,7 @@ export function DepartureBoard({
         setSelectedNotice(null);
       }
     }
-  }, [departures, selectedNotice]);
+  }, [todaysDepartures, selectedNotice]);
 
   // Collect warnings and alerts - filter out cancelled/delayed/bus (they show in panel)
   const warnings = useMemo(() => {
@@ -629,7 +652,7 @@ export function DepartureBoard({
               <p className="text-xl font-semibold">Loading schedule...</p>
             </div>
           </div>
-        ) : departures.length === 0 ? (
+        ) : todaysDepartures.length === 0 ? (
           <div className="text-center py-16 text-black/70 dark:text-white/70" role="status" aria-live="polite">
             <p className="text-xl font-semibold">No trains scheduled at this time</p>
           </div>
@@ -668,7 +691,7 @@ export function DepartureBoard({
                 }}
               >
                 {virtualRows.map((virtualRow) => {
-                  const departure = departures[virtualRow.index];
+                  const departure = todaysDepartures[virtualRow.index];
                   if (!departure) {
                     return null;
                   }
