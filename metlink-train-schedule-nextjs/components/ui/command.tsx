@@ -21,7 +21,7 @@ function Command({
     <CommandPrimitive
       data-slot="command"
       className={cn(
-        "bg-popover text-popover-foreground flex h-full w-full flex-col overflow-hidden rounded-md",
+        "bg-white dark:bg-black text-black dark:text-white flex h-full w-full flex-col overflow-hidden border-2 border-black dark:border-white rounded-none shadow-[10px_10px_0_#000] dark:shadow-[10px_10px_0_rgba(255,255,255,0.3)]",
         className
       )}
       {...props}
@@ -34,6 +34,7 @@ function CommandDialog({
   description = "Search for a command to run...",
   children,
   className,
+  commandClassName,
   showCloseButton = true,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
@@ -41,6 +42,7 @@ function CommandDialog({
   description?: string
   className?: string
   showCloseButton?: boolean
+  commandClassName?: string
 }) {
   return (
     <Dialog {...props}>
@@ -49,10 +51,18 @@ function CommandDialog({
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
       <DialogContent
-        className={cn("overflow-hidden p-0", className)}
+        className={cn(
+          "overflow-hidden p-0 border-2 border-black dark:border-white rounded-none bg-white dark:bg-black shadow-[18px_18px_0_rgba(0,0,0,0.85)] dark:shadow-[18px_18px_0_rgba(255,255,255,0.25)]",
+          className
+        )}
         showCloseButton={showCloseButton}
       >
-        <Command className="[&_[cmdk-group-heading]]:text-muted-foreground **:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">
+        <Command
+          className={cn(
+            "bg-white dark:bg-black text-black dark:text-white [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.3em] [&_[cmdk-group-heading]]:text-black/70 dark:[&_[cmdk-group-heading]]:text-white/70 [&_[cmdk-group-heading]]:px-4 [&_[cmdk-group-heading]]:py-2 [&_[cmdk-group]]:px-0 [&_[cmdk-group]]:py-0 [&_[cmdk-input-wrapper]]:border-b-2 [&_[cmdk-input-wrapper]]:border-black dark:[&_[cmdk-input-wrapper]]:border-white [&_[cmdk-input-wrapper]]:px-4 [&_[cmdk-input-wrapper]]:bg-white dark:[&_[cmdk-input-wrapper]]:bg-black [&_[cmdk-input]]:text-black dark:[&_[cmdk-input]]:text-white [&_[cmdk-input]]:uppercase [&_[cmdk-input]]:tracking-[0.2em] [&_[cmdk-item]]:px-4 [&_[cmdk-item]]:py-4 [&_[cmdk-item]]:uppercase [&_[cmdk-item]]:tracking-[0.2em] [&_[cmdk-item]]:text-black dark:[&_[cmdk-item]]:text-white",
+            commandClassName
+          )}
+        >
           {children}
         </Command>
       </DialogContent>
@@ -67,13 +77,13 @@ function CommandInput({
   return (
     <div
       data-slot="command-input-wrapper"
-      className="flex h-9 items-center gap-2 border-b px-3"
+      className="flex h-12 items-center gap-2 border-b-2 border-black dark:border-white bg-white dark:bg-black px-4"
     >
-      <SearchIcon className="size-4 shrink-0 opacity-50" />
+      <SearchIcon className="size-4 shrink-0 text-black/60 dark:text-white/70" />
       <CommandPrimitive.Input
         data-slot="command-input"
         className={cn(
-          "placeholder:text-muted-foreground flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
+          "placeholder:text-black/60 dark:placeholder:text-white/60 flex h-10 w-full rounded-none bg-transparent text-xs font-semibold uppercase tracking-[0.2em] outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
           className
         )}
         {...props}
@@ -90,7 +100,7 @@ function CommandList({
     <CommandPrimitive.List
       data-slot="command-list"
       className={cn(
-        "max-h-[300px] scroll-py-1 overflow-x-hidden overflow-y-auto",
+        "max-h-[320px] scroll-py-1 overflow-x-hidden overflow-y-auto bg-white dark:bg-black text-black dark:text-white",
         className
       )}
       {...props}
@@ -118,7 +128,7 @@ function CommandGroup({
     <CommandPrimitive.Group
       data-slot="command-group"
       className={cn(
-        "text-foreground [&_[cmdk-group-heading]]:text-muted-foreground overflow-hidden p-1 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium",
+        "text-foreground overflow-hidden [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.3em]",
         className
       )}
       {...props}
@@ -147,7 +157,7 @@ function CommandItem({
     <CommandPrimitive.Item
       data-slot="command-item"
       className={cn(
-        "data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-pointer select-none items-center gap-3 border-b border-black/15 dark:border-white/15 px-4 py-4 text-sm font-semibold uppercase tracking-[0.2em] text-black dark:text-white outline-hidden transition-colors data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-black/10 dark:data-[selected=true]:bg-white/10 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-black/50 dark:[&_svg:not([class*='text-'])]:text-white/70",
         className
       )}
       {...props}

@@ -89,10 +89,7 @@ export function StationSelector({
   const summaryLabel = isAllSelected
     ? 'All Stations'
     : `${selectedCount} of ${totalCount} stations`;
-  const controlButtonClasses =
-    'uppercase tracking-wider text-xs font-semibold border-2 border-black dark:border-white bg-white dark:bg-black text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-colors';
-  const dialogSurfaceClasses =
-    'max-w-xl w-full border-2 border-black dark:border-white bg-white dark:bg-black text-black dark:text-white rounded-none';
+  const dialogSurfaceClasses = 'max-w-2xl w-full';
 
   return (
     <div className="relative">
@@ -127,6 +124,7 @@ export function StationSelector({
           description="Search to find a station quickly"
           className={dialogSurfaceClasses}
           showCloseButton={false}
+          commandClassName="[&_[cmdk-group]]:divide-y [&_[cmdk-group]]:divide-black dark:[&_[cmdk-group]]:divide-white"
         >
           <div className="border-b-2 border-black dark:border-white px-4 py-3">
             <div className="flex items-center justify-between">
@@ -143,7 +141,7 @@ export function StationSelector({
                   size="sm"
                   variant="outline"
                   onClick={handleSelectAll}
-                  className={`h-8 px-3 ${controlButtonClasses}`}
+                  className="h-8 px-4 rounded-none border-2 border-black dark:border-white bg-white dark:bg-black text-black dark:text-white text-[10px] font-semibold uppercase tracking-[0.25em] hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black"
                 >
                   Select All
                 </Button>
@@ -151,7 +149,7 @@ export function StationSelector({
                   size="sm"
                   variant="outline"
                   onClick={handleReset}
-                  className={`h-8 px-3 ${controlButtonClasses}`}
+                  className="h-8 px-4 rounded-none border-2 border-black dark:border-white bg-white dark:bg-black text-black dark:text-white text-[10px] font-semibold uppercase tracking-[0.25em] hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black"
                 >
                   Reset
                 </Button>
@@ -162,16 +160,15 @@ export function StationSelector({
             placeholder="Search stations..."
             className="text-black dark:text-white placeholder:text-black/70 dark:placeholder:text-white/70"
           />
-          <CommandList className="bg-white dark:bg-black">
+          <CommandList>
             <CommandEmpty>No stations found</CommandEmpty>
-            <CommandGroup heading="Stations" className="text-black dark:text-white">
+            <CommandGroup heading="Stations">
               {availableStations.map((station) => {
                 const isSelected = draftSelection.includes(station);
                 return (
                   <CommandItem
                     key={station}
                     onSelect={() => handleToggleStation(station)}
-                    className="flex items-center gap-3 text-sm uppercase tracking-wide rounded-none border-b border-black/10 dark:border-white/10 px-4 py-4 text-black dark:text-white data-[selected=true]:bg-black/10 dark:data-[selected=true]:bg-white/10"
                   >
                     <span
                       className={`w-5 h-5 flex items-center justify-center border-2 border-black dark:border-white transition-colors ${
@@ -197,7 +194,7 @@ export function StationSelector({
             <Button
               onClick={handleApply}
               disabled={draftSelection.length === 0}
-              className={`h-9 px-4 ${controlButtonClasses}`}
+              className="h-10 px-6 rounded-none border-2 border-black dark:border-white bg-black text-white dark:bg-white dark:text-black text-[11px] font-semibold uppercase tracking-[0.35em] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Apply Selection
             </Button>
