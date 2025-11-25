@@ -31,19 +31,11 @@ export function StationSelector({
     return LINE_STATIONS[selectedLine] || [];
   }, [selectedLine]);
 
-  // Update available stations when line changes
+  // Reset to empty (show all stations) when line changes
   useEffect(() => {
-    // Always reset to all stations when line changes
-    const defaultStations = getDefaultStationsForLine(selectedLine);
-    // Only update if the current selection is different
-    const currentSet = new Set(selectedStations);
-    const defaultSet = new Set(defaultStations);
-    const isDifferent = defaultStations.length !== selectedStations.length ||
-      !defaultStations.every(s => currentSet.has(s)) ||
-      !selectedStations.every(s => defaultSet.has(s));
-    
-    if (isDifferent) {
-      onStationsChange(defaultStations);
+    // Reset to empty array when line changes - empty means show all stations
+    if (selectedStations.length > 0) {
+      onStationsChange([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLine]); // Only depend on selectedLine to avoid loops
@@ -57,9 +49,6 @@ export function StationSelector({
   const handleToggleStation = (station: string) => {
     setDraftSelection((previous) => {
       if (previous.includes(station)) {
-        if (previous.length === 1) {
-          return previous;
-        }
         return previous.filter((s) => s !== station);
       }
       return [...previous, station];
@@ -71,22 +60,21 @@ export function StationSelector({
   };
 
   const handleReset = () => {
-    setDraftSelection(getDefaultStationsForLine(selectedLine));
+    // Reset to empty - empty means show all stations
+    setDraftSelection([]);
   };
 
   const handleApply = () => {
-    if (draftSelection.length === 0) {
-      onStationsChange([...availableStations]);
-    } else {
-      onStationsChange([...draftSelection]);
-    }
+    // Allow empty selection - empty means show all stations
+    onStationsChange([...draftSelection]);
     setIsOpen(false);
   };
 
   const isAllSelected = availableStations.every(s => selectedStations.includes(s));
   const selectedCount = selectedStations.length;
   const totalCount = availableStations.length;
-  const summaryLabel = isAllSelected
+  // Show "All Stations" when empty or when all are selected
+  const summaryLabel = selectedCount === 0 || isAllSelected
     ? 'All Stations'
     : `${selectedCount} of ${totalCount} stations`;
   const dialogSurfaceClasses = 'max-w-2xl w-full';
@@ -187,14 +175,10 @@ export function StationSelector({
               })}
             </CommandGroup>
           </CommandList>
-          <div className="flex items-center justify-between border-t-2 border-black dark:border-white px-4 py-3">
-            <p className="text-xs text-black/70 dark:text-white/70">
-              Keep at least one station selected.
-            </p>
+          <div className="flex items-center justify-end border-t-2 border-black dark:border-white px-4 py-3">
             <Button
               onClick={handleApply}
-              disabled={draftSelection.length === 0}
-              className="h-10 px-6 rounded-none border-2 border-black dark:border-white bg-black text-white dark:bg-white dark:text-black text-[11px] font-semibold uppercase tracking-[0.35em] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="h-10 px-6 rounded-none border-2 border-black dark:border-white bg-black text-white dark:bg-white dark:text-black text-[11px] font-semibold uppercase tracking-[0.35em] hover:bg-black/90 dark:hover:bg-white/90"
             >
               Apply Selection
             </Button>

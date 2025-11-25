@@ -14,7 +14,7 @@ import type { ScheduleConfig } from '@/lib/utils/favorites';
 import { Button } from '@/components/ui/button';
 import { sortDepartures } from '@/lib/utils/sortUtils';
 import { getRouteText, isBusReplacement } from '@/lib/utils/departureUtils';
-import { DEFAULT_LINE, getDefaultStationsForLine, SERVICE_IDS } from '@/lib/constants';
+import { DEFAULT_LINE, SERVICE_IDS } from '@/lib/constants';
 import type { SortOption, SortDirection } from '@/lib/utils/sortUtils';
 import type { Departure } from '@/types';
 import type { LineCode } from '@/lib/constants';
@@ -23,11 +23,11 @@ import { usePreferences } from '@/components/preferences-provider';
 export default function Home() {
   const [selectedLine, setSelectedLine] = useState<LineCode>(DEFAULT_LINE);
   const [selectedStations, setSelectedStations] = useState<Record<LineCode, string[]>>(() => {
-    // Initialize with all stations for each line
+    // Initialize with empty arrays - empty means show all stations
     const allLines = Object.values(SERVICE_IDS) as LineCode[];
     const initial: Record<string, string[]> = {};
     allLines.forEach(line => {
-      initial[line] = getDefaultStationsForLine(line);
+      initial[line] = [];
     });
     return initial as Record<LineCode, string[]>;
   });
@@ -59,15 +59,8 @@ export default function Home() {
     }
   }, [preferences.alerts.enabled]);
 
-  // Reset stations when line changes if not already set
+  // Reset direction to inbound (to Wellington) when line changes
   useEffect(() => {
-    if (!selectedStations[selectedLine] || selectedStations[selectedLine].length === 0) {
-      setSelectedStations(prev => ({
-        ...prev,
-        [selectedLine]: getDefaultStationsForLine(selectedLine),
-      }));
-    }
-    // Reset direction to inbound (to Wellington) when line changes
     setDirection('inbound');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLine]); // Only depend on selectedLine to avoid loops
