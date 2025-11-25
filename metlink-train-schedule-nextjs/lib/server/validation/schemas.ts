@@ -25,6 +25,24 @@ export const departuresQuerySchema = z.object({
         message: 'stations must be a comma-separated list of valid station IDs',
       }
     ),
+  prewarm: z
+    .string()
+    .optional()
+    .refine(
+      (value) =>
+        value === undefined ||
+        ['true', 'false', '1', '0'].includes(value.toLowerCase()),
+      {
+        message: 'prewarm must be true or false',
+      }
+    )
+    .transform((value) => {
+      if (value === undefined) {
+        return undefined;
+      }
+      const normalized = value.toLowerCase();
+      return normalized === 'true' || normalized === '1';
+    }),
 });
 
 export const stationQuerySchema = z.object({

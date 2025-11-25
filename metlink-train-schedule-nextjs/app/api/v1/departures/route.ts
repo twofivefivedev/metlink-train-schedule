@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { SERVICE_IDS, getDefaultStationsForLine, type LineCode, getServiceIdFromLineCode } from '@/lib/constants';
-import { getMultipleStationDepartures, getRequestMetrics } from '@/lib/server/metlinkService';
+import { getMultipleStationDepartures, getRequestMetrics, prewarmStationDepartures } from '@/lib/server/metlinkService';
 import { processDepartures } from '@/lib/server/departureService';
 import { cache } from '@/lib/server/cache';
 import { success } from '@/lib/server/response';
@@ -45,12 +45,45 @@ async function baseHandler(
     }
 
     // Get station list and line from query params or use defaults
-    const { line, stations } = validated;
+    const { line, stations, prewarm } = validated;
     const stationsParam = stations || null;
     const lineParam = line || 'WRL';
     
     // Validate line code and get service ID
     const serviceId = getServiceIdFromLineCode(lineParam);
+
+    const isCronRequest = request.headers.has('x-vercel-cron');
+    const manualPrewarmRequested = Boolean(prewarm);
+    const shouldPrewarm = isCronRequest || manualPrewarmRequested;
+    const prewarmPromise = shouldPrewarm
+      ? prewarmStationDepartures({ reason: isCronRequest ? 'cron' : 'manual' })
+      : null;
+    let prewarmSummary: Awaited<ReturnType<typeof prewarmStationDepartures>> | null = null;
+    let prewarmHandled = false;
+    const resolvePrewarm = async () => {
+      if (!prewarmPromise || prewarmHandled) {
+        return prewarmSummary;
+      }
+      prewarmHandled = true;
+      if (isCronRequest) {
+        try {
+          prewarmSummary = await prewarmPromise;
+        } catch (error) {
+          logger.warn('Station cache prewarm failed', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          prewarmSummary = null;
+        }
+      } else {
+        prewarmPromise.catch((error) => {
+          logger.warn('Station cache prewarm (async) failed', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+        prewarmSummary = null;
+      }
+      return prewarmSummary;
+    };
     
     // If no stations specified, use all stations for the line
     const parsedStations = parseStationsParam(stationsParam || undefined);
@@ -73,6 +106,7 @@ async function baseHandler(
         true
       ).catch(() => {});
 
+      const resolvedPrewarm = await resolvePrewarm();
       const response = NextResponse.json(
         success(
           {
@@ -84,6 +118,15 @@ async function baseHandler(
             cached: true,
             cacheAge: `${cacheAge}s`,
             version: 'v1',
+            ...(resolvedPrewarm
+              ? {
+                  prewarm: {
+                    warmedStations: resolvedPrewarm.warmedStations.length,
+                    reason: resolvedPrewarm.reason,
+                    durationMs: resolvedPrewarm.durationMs,
+                  },
+                }
+              : {}),
           }
         )
       );
@@ -131,12 +174,26 @@ async function baseHandler(
     ).catch(() => {});
 
     // Return response
-    const response = NextResponse.json(success({
-      inbound,
-      outbound,
-      total,
-      version: 'v1',
-    }));
+    const resolvedPrewarm = await resolvePrewarm();
+    const response = NextResponse.json(
+      success(
+        {
+          inbound,
+          outbound,
+          total,
+          version: 'v1',
+        },
+        resolvedPrewarm
+          ? {
+              prewarm: {
+                warmedStations: resolvedPrewarm.warmedStations.length,
+                reason: resolvedPrewarm.reason,
+                durationMs: resolvedPrewarm.durationMs,
+              },
+            }
+          : undefined
+      )
+    );
     
     recordPerformanceMetric(perfContext, 200, undefined, undefined)
       .catch(() => {});
@@ -164,6 +221,8 @@ async function baseHandler(
     recordPerformanceMetric(perfContext, 500, undefined, undefined, error.message)
       .catch(() => {});
     
+    await resolvePrewarm();
+
     return NextResponse.json(
       {
         success: false,

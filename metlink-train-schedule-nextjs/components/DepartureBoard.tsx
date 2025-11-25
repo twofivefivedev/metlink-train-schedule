@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Button } from './ui/button';
 import { ArrowLeftRight, AlertTriangle, RefreshCw, Clock, BookmarkPlus } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
@@ -26,6 +27,10 @@ import type { Departure } from '@/types';
 import type { LineCode } from '@/lib/constants';
 import type { SortOption, SortDirection } from '@/lib/utils/sortUtils';
 import type { StaleState } from '@/hooks/useTrainSchedule';
+
+const NOTICE_SAMPLE_SIZE = 50;
+const MAX_WARNING_ITEMS = 12;
+const ESTIMATED_ROW_HEIGHT = 96;
 
 interface DepartureBoardProps {
   departures: Departure[];
@@ -68,16 +73,34 @@ export function DepartureBoard({
 }: DepartureBoardProps) {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [configName, setConfigName] = useState('');
-  const displayedDepartures = departures.slice(0, 10);
+  const noticeSample = useMemo(() => departures.slice(0, NOTICE_SAMPLE_SIZE), [departures]);
   const currentTime = useCurrentTime();
   const { syncFromStorage } = usePreferences();
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: departures.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => ESTIMATED_ROW_HEIGHT,
+    overscan: 8,
+    getItemKey: (index) => {
+      const departure = departures[index];
+      if (!departure) {
+        return `departure-${index}`;
+      }
+      return (
+        (departure as unknown as { trip_id?: string }).trip_id ||
+        `${departure.service_id}-${departure.station}-${departure.departure?.aimed || index}`
+      );
+    },
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
   
   // Group delayed trains by trip_id to identify which stations belong to the same train
   // Only show expected time on the first station of each delayed train
   const delayedTrainFirstStations = useMemo(() => {
     const delayedTrains = new Map<string, Departure>();
     
-    displayedDepartures.forEach(dep => {
+    departures.forEach(dep => {
       const category = getStatusCategory(dep);
       if (category === 'delayed') {
         const tripId = (dep as unknown as { trip_id?: string }).trip_id;
@@ -107,7 +130,7 @@ export function DepartureBoard({
     });
     
     return firstStationIds;
-  }, [displayedDepartures]);
+  }, [departures]);
   
   // Track selected notice for service notice panel
   const [selectedNotice, setSelectedNotice] = useState<{
@@ -118,10 +141,10 @@ export function DepartureBoard({
 
   // Calculate wait time for the next available (non-cancelled, future) departure
   const nextDepartureWaitTime = useMemo(() => {
-    if (displayedDepartures.length === 0) return null;
+    if (departures.length === 0) return null;
     
     // Find the first non-cancelled departure that hasn't departed yet
-    const nextAvailableDeparture = displayedDepartures.find(dep => {
+    const nextAvailableDeparture = departures.find(dep => {
       const status = (dep as unknown as { status?: string }).status;
       if (status === 'canceled' || status === 'cancelled') {
         return false;
@@ -148,15 +171,15 @@ export function DepartureBoard({
       minutes: waitTime.minutes !== null ? waitTime.minutes : null,
       station: getStationName(nextAvailableDeparture.station),
     };
-  }, [displayedDepartures, currentTime]);
+  }, [departures, currentTime]);
 
   // Find departures with notices (cancelled, delayed, bus)
   const departuresWithNotices = useMemo(() => {
-    return displayedDepartures.filter(dep => {
+    return noticeSample.filter(dep => {
       const category = getStatusCategory(dep);
       return category !== 'normal';
-    });
-  }, [displayedDepartures]);
+    }).slice(0, MAX_WARNING_ITEMS);
+  }, [noticeSample]);
 
   // Don't auto-select notice - user must click to see details
   // Only clear selection if the selected departure is no longer in the list
@@ -165,7 +188,7 @@ export function DepartureBoard({
       const currentId = (selectedNotice.departure as unknown as { trip_id?: string }).trip_id || 
                        `${selectedNotice.departure.service_id}-${selectedNotice.departure.station}-${selectedNotice.departure.departure?.aimed}`;
       
-      const stillExists = displayedDepartures.some(dep => {
+      const stillExists = departures.some(dep => {
         const depId = (dep as unknown as { trip_id?: string }).trip_id || 
                      `${dep.service_id}-${dep.station}-${dep.departure?.aimed}`;
         return depId === currentId;
@@ -175,13 +198,13 @@ export function DepartureBoard({
         setSelectedNotice(null);
       }
     }
-  }, [displayedDepartures, selectedNotice]);
+  }, [departures, selectedNotice]);
 
   // Collect warnings and alerts - filter out cancelled/delayed/bus (they show in panel)
   const warnings = useMemo(() => {
     const allWarnings: Array<{ type: string; message: string; departure: Departure }> = [];
     
-    displayedDepartures.forEach((departure) => {
+    noticeSample.forEach((departure) => {
       const category = getStatusCategory(departure);
       // Only include "other" notices in the top banner
       if (category === 'normal') {
@@ -204,8 +227,8 @@ export function DepartureBoard({
       }
     });
 
-    return allWarnings;
-  }, [displayedDepartures]);
+    return allWarnings.slice(0, MAX_WARNING_ITEMS);
+  }, [noticeSample]);
 
   // Get explanation text for a notice
   const getNoticeExplanation = (departure: Departure, category: StatusCategory, message: string): string => {
@@ -606,7 +629,7 @@ export function DepartureBoard({
               <p className="text-xl font-semibold">Loading schedule...</p>
             </div>
           </div>
-        ) : displayedDepartures.length === 0 ? (
+        ) : departures.length === 0 ? (
           <div className="text-center py-16 text-black/70 dark:text-white/70" role="status" aria-live="polite">
             <p className="text-xl font-semibold">No trains scheduled at this time</p>
           </div>
@@ -631,33 +654,61 @@ export function DepartureBoard({
               </div>
             </div>
 
-            {/* Table Rows */}
-            <div className="divide-y-2 divide-black dark:divide-white" role="rowgroup">
-              {displayedDepartures.map((departure, index) => {
-                const departureId = (departure as unknown as { trip_id?: string }).trip_id || 
-                                  `${departure.service_id}-${departure.station}-${departure.departure?.aimed}`;
-                const selectedId = selectedNotice ? 
-                  ((selectedNotice.departure as unknown as { trip_id?: string }).trip_id || 
-                   `${selectedNotice.departure.service_id}-${selectedNotice.departure.station}-${selectedNotice.departure.departure?.aimed}`) : null;
-                
-                // Check if this is the first station of a delayed train
-                // Use the same ID format as in delayedTrainFirstStations
-                const tripId = (departure as unknown as { trip_id?: string }).trip_id || 'no-trip';
-                const stationId = `${tripId}-${departure.station}-${departure.departure?.aimed}`;
-                const isFirstDelayedStation = delayedTrainFirstStations.has(stationId);
-                
-                return (
-                  <DepartureBoardRow
-                    key={`${departureId}-${index}`}
-                    departure={departure}
-                    index={index}
-                    onSelect={handleNoticeSelect}
-                    isSelected={departureId === selectedId}
-                    showExpectedTime={isFirstDelayedStation}
-                    currentTime={currentTime}
-                  />
-                );
-              })}
+            {/* Virtualized Table Rows */}
+            <div
+              ref={tableContainerRef}
+              className="max-h-[70vh] overflow-auto border-t-2 border-black dark:border-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black dark:focus-visible:ring-white"
+              role="rowgroup"
+              aria-label="Train departures list"
+            >
+              <div
+                style={{
+                  height: `${rowVirtualizer.getTotalSize()}px`,
+                  position: 'relative',
+                }}
+              >
+                {virtualRows.map((virtualRow) => {
+                  const departure = departures[virtualRow.index];
+                  if (!departure) {
+                    return null;
+                  }
+
+                  const departureId =
+                    (departure as unknown as { trip_id?: string }).trip_id ||
+                    `${departure.service_id}-${departure.station}-${departure.departure?.aimed}`;
+                  const selectedId = selectedNotice
+                    ? (selectedNotice.departure as unknown as { trip_id?: string }).trip_id ||
+                      `${selectedNotice.departure.service_id}-${selectedNotice.departure.station}-${selectedNotice.departure.departure?.aimed}`
+                    : null;
+                  const tripId = (departure as unknown as { trip_id?: string }).trip_id || 'no-trip';
+                  const stationId = `${tripId}-${departure.station}-${departure.departure?.aimed}`;
+                  const isFirstDelayedStation = delayedTrainFirstStations.has(stationId);
+
+                  return (
+                    <div
+                      key={`${departureId}-${virtualRow.index}`}
+                      data-index={virtualRow.index}
+                      ref={rowVirtualizer.measureElement}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      <DepartureBoardRow
+                        departure={departure}
+                        index={virtualRow.index}
+                        onSelect={handleNoticeSelect}
+                        isSelected={departureId === selectedId}
+                        showExpectedTime={isFirstDelayedStation}
+                        currentTime={currentTime}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -795,7 +846,7 @@ const DepartureBoardRow = React.memo(function DepartureBoardRow({
 
   return (
     <div
-      className={`grid grid-cols-3 gap-4 sm:gap-8 px-4 sm:px-8 py-3 sm:py-5 transition-colors ${
+      className={`grid grid-cols-3 gap-4 sm:gap-8 px-4 sm:px-8 py-3 sm:py-5 transition-colors border-b-2 border-black dark:border-white ${
         category !== 'normal' 
           ? 'cursor-pointer hover:bg-black/10 dark:hover:bg-white/10' 
           : 'hover:bg-black/5 dark:hover:bg-white/5'
