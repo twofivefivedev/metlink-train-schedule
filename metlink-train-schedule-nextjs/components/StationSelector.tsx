@@ -31,19 +31,11 @@ export function StationSelector({
     return LINE_STATIONS[selectedLine] || [];
   }, [selectedLine]);
 
-  // Update available stations when line changes
+  // Reset to empty (show all stations) when line changes
   useEffect(() => {
-    // Always reset to all stations when line changes
-    const defaultStations = getDefaultStationsForLine(selectedLine);
-    // Only update if the current selection is different
-    const currentSet = new Set(selectedStations);
-    const defaultSet = new Set(defaultStations);
-    const isDifferent = defaultStations.length !== selectedStations.length ||
-      !defaultStations.every(s => currentSet.has(s)) ||
-      !selectedStations.every(s => defaultSet.has(s));
-    
-    if (isDifferent) {
-      onStationsChange(defaultStations);
+    // Reset to empty array when line changes - empty means show all stations
+    if (selectedStations.length > 0) {
+      onStationsChange([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLine]); // Only depend on selectedLine to avoid loops
@@ -57,9 +49,6 @@ export function StationSelector({
   const handleToggleStation = (station: string) => {
     setDraftSelection((previous) => {
       if (previous.includes(station)) {
-        if (previous.length === 1) {
-          return previous;
-        }
         return previous.filter((s) => s !== station);
       }
       return [...previous, station];
@@ -71,24 +60,24 @@ export function StationSelector({
   };
 
   const handleReset = () => {
-    setDraftSelection(getDefaultStationsForLine(selectedLine));
+    // Reset to empty - empty means show all stations
+    setDraftSelection([]);
   };
 
   const handleApply = () => {
-    if (draftSelection.length === 0) {
-      onStationsChange([...availableStations]);
-    } else {
-      onStationsChange([...draftSelection]);
-    }
+    // Allow empty selection - empty means show all stations
+    onStationsChange([...draftSelection]);
     setIsOpen(false);
   };
 
   const isAllSelected = availableStations.every(s => selectedStations.includes(s));
   const selectedCount = selectedStations.length;
   const totalCount = availableStations.length;
-  const summaryLabel = isAllSelected
+  // Show "All Stations" when empty or when all are selected
+  const summaryLabel = selectedCount === 0 || isAllSelected
     ? 'All Stations'
     : `${selectedCount} of ${totalCount} stations`;
+  const dialogSurfaceClasses = 'max-w-2xl w-full';
 
   return (
     <div className="relative">
@@ -121,8 +110,11 @@ export function StationSelector({
           }}
           title="Select stations"
           description="Search to find a station quickly"
+          className={dialogSurfaceClasses}
+          showCloseButton={false}
+          commandClassName="[&_[cmdk-group]]:divide-y [&_[cmdk-group]]:divide-black dark:[&_[cmdk-group]]:divide-white"
         >
-          <div className="border-b border-black/10 dark:border-white/10 px-4 py-3">
+          <div className="border-b-2 border-black dark:border-white px-4 py-3">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-black dark:text-white">
@@ -137,22 +129,25 @@ export function StationSelector({
                   size="sm"
                   variant="outline"
                   onClick={handleSelectAll}
-                  className="h-8"
+                  className="h-8 px-4 rounded-none border-2 border-black dark:border-white bg-white dark:bg-black text-black dark:text-white text-[10px] font-semibold uppercase tracking-[0.25em] hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black"
                 >
                   Select All
                 </Button>
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="outline"
                   onClick={handleReset}
-                  className="h-8"
+                  className="h-8 px-4 rounded-none border-2 border-black dark:border-white bg-white dark:bg-black text-black dark:text-white text-[10px] font-semibold uppercase tracking-[0.25em] hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black"
                 >
                   Reset
                 </Button>
               </div>
             </div>
           </div>
-          <CommandInput placeholder="Search stations..." />
+          <CommandInput
+            placeholder="Search stations..."
+            className="text-black dark:text-white placeholder:text-black/70 dark:placeholder:text-white/70"
+          />
           <CommandList>
             <CommandEmpty>No stations found</CommandEmpty>
             <CommandGroup heading="Stations">
@@ -162,9 +157,14 @@ export function StationSelector({
                   <CommandItem
                     key={station}
                     onSelect={() => handleToggleStation(station)}
-                    className="flex items-center gap-3 text-sm"
                   >
-                    <span className="w-5 h-5 flex items-center justify-center border-2 border-black dark:border-white text-black dark:text-white">
+                    <span
+                      className={`w-5 h-5 flex items-center justify-center border-2 border-black dark:border-white transition-colors ${
+                        isSelected
+                          ? 'bg-black text-white dark:bg-white dark:text-black'
+                          : 'bg-transparent text-black dark:text-white'
+                      }`}
+                    >
                       <Check className={`h-3 w-3 ${isSelected ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true" />
                     </span>
                     <span className="flex-1 text-black dark:text-white">
@@ -175,14 +175,10 @@ export function StationSelector({
               })}
             </CommandGroup>
           </CommandList>
-          <div className="flex items-center justify-between border-t border-black/10 dark:border-white/10 px-4 py-3">
-            <p className="text-xs text-black/70 dark:text-white/70">
-              Keep at least one station selected.
-            </p>
+          <div className="flex items-center justify-end border-t-2 border-black dark:border-white px-4 py-3">
             <Button
               onClick={handleApply}
-              disabled={draftSelection.length === 0}
-              className="h-9"
+              className="h-10 px-6 rounded-none border-2 border-black dark:border-white bg-black text-white dark:bg-white dark:text-black text-[11px] font-semibold uppercase tracking-[0.35em] hover:bg-black/90 dark:hover:bg-white/90"
             >
               Apply Selection
             </Button>

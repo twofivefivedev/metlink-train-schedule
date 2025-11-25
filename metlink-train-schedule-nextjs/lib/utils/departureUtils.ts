@@ -67,9 +67,9 @@ export function getDepartureStatus(departure: Departure): {
   color: 'success' | 'warning' | 'destructive' | 'secondary';
   isRealTime: boolean;
 } {
-  const delay = parseDelay((departure as unknown as { delay?: string }).delay);
-  const hasRealTime = (departure as unknown as { monitored?: boolean }).monitored && departure.departure?.expected;
-  const status = (departure as unknown as { status?: string }).status;
+  const delay = parseDelay(departure.delay);
+  const hasRealTime = Boolean(departure.monitored && departure.departure?.expected);
+  const status = departure.status;
   
   if (status === 'canceled' || status === 'cancelled') {
     return { text: 'Canceled', color: 'destructive', isRealTime: true };
@@ -162,10 +162,10 @@ export function isBusReplacement(departure: Departure): boolean {
   if (!departure) return false;
 
   const destination = (departure.destination?.name || '').toLowerCase();
-  const origin = ((departure as unknown as { origin?: { name?: string } }).origin?.name || '').toLowerCase();
-  const tripId = ((departure as unknown as { trip_id?: string }).trip_id || '').toLowerCase();
-  const operator = ((departure as unknown as { operator?: string }).operator || '').toLowerCase();
-  const vehicleId = (departure as unknown as { vehicle_id?: string | number }).vehicle_id;
+  const origin = (departure.origin?.name || '').toLowerCase();
+  const tripId = (departure.trip_id || '').toLowerCase();
+  const operator = (departure.operator || '').toLowerCase();
+  const vehicleId = departure.vehicle_id;
 
   return (
     destination.includes('bus') ||
@@ -191,7 +191,7 @@ export function getImportantNotices(departure: Departure): string | null {
   }
 
   // Check for delays - use API delay field first, then calculated delay
-  const delay = parseDelay((departure as unknown as { delay?: string }).delay);
+  const delay = parseDelay(departure.delay);
   const calculatedDelayMinutes = calculateDelayMinutes(departure);
   
   let delayMinutes: number | null = null;
@@ -224,12 +224,12 @@ export function getImportantNotices(departure: Departure): string | null {
     }
   }
 
-  const status = (departure as unknown as { status?: string }).status;
+  const status = departure.status;
   if (status === 'canceled' || status === 'cancelled') {
     notices.push('Cancelled');
   }
 
-  const wheelchairAccessible = (departure as unknown as { wheelchair_accessible?: boolean }).wheelchair_accessible;
+  const wheelchairAccessible = departure.wheelchair_accessible;
   if (wheelchairAccessible === false) {
     notices.push('Limited access');
   }
@@ -244,7 +244,7 @@ export function getImportantNotices(departure: Departure): string | null {
 export type StatusCategory = 'normal' | 'cancelled' | 'delayed' | 'bus';
 
 export function getStatusCategory(departure: Departure): StatusCategory {
-  const status = (departure as unknown as { status?: string }).status;
+  const status = departure.status;
   
   if (status === 'canceled' || status === 'cancelled') {
     return 'cancelled';
@@ -260,7 +260,7 @@ export function getStatusCategory(departure: Departure): StatusCategory {
   }
   
   // Check API delay field
-  const delay = parseDelay((departure as unknown as { delay?: string }).delay);
+  const delay = parseDelay(departure.delay);
   if (delay) {
     const minutesMatch = delay.match(/(\d+)m/);
     if (minutesMatch) {
@@ -312,7 +312,7 @@ export function calculateWaitTime(
   minutes: number | null;
   displayText: string;
 } {
-  const status = (departure as unknown as { status?: string }).status;
+  const status = departure.status;
   if (status === 'canceled' || status === 'cancelled') {
     return { minutes: null, displayText: 'Cancelled' };
   }

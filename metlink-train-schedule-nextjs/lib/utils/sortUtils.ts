@@ -3,6 +3,7 @@
  */
 
 import type { Departure } from '@/types';
+import { getDelay, getStatus } from '@/lib/server/validation/metlink';
 
 export type SortOption = 'time' | 'delay' | 'status' | 'station';
 export type SortDirection = 'asc' | 'desc';
@@ -36,8 +37,8 @@ function sortByDelay(a: Departure, b: Departure, direction: SortDirection): numb
     return (parseInt(hours || '0', 10) * 60) + parseInt(minutes || '0', 10);
   };
   
-  const delayA = parseDelay((a as unknown as { delay?: string }).delay);
-  const delayB = parseDelay((b as unknown as { delay?: string }).delay);
+  const delayA = parseDelay(getDelay(a));
+  const delayB = parseDelay(getDelay(b));
   
   return direction === 'asc' ? delayA - delayB : delayB - delayA;
 }
@@ -47,7 +48,7 @@ function sortByDelay(a: Departure, b: Departure, direction: SortDirection): numb
  */
 function sortByStatus(a: Departure, b: Departure, direction: SortDirection): number {
   const getStatusPriority = (departure: Departure): number => {
-    const status = (departure as unknown as { status?: string }).status;
+    const status = getStatus(departure);
     if (status === 'canceled' || status === 'cancelled') return 0;
     if (status === 'delayed') return 1;
     if (departure.departure?.expected) return 2; // On time with real-time data

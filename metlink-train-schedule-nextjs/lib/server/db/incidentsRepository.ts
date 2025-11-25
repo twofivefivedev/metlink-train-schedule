@@ -29,6 +29,11 @@ export interface ServiceIncidentRecord {
   expectedTime?: Date | null;
   incidentType: IncidentType;
   delayMinutes?: number | null;
+  cause?: string | null;
+  lineSegment?: string | null;
+  replacementMode?: string | null;
+  replacementOperator?: string | null;
+  impactedStations?: string[] | null;
   details?: Record<string, unknown> | null;
 }
 
@@ -138,6 +143,11 @@ class IncidentsRepositoryImpl implements IncidentsRepository {
         expectedTime: incident.expectedTime?.toISOString() || null,
         incidentType: incident.incidentType,
         delayMinutes: incident.delayMinutes || null,
+        cause: incident.cause ?? null,
+        lineSegment: incident.lineSegment ?? null,
+        replacementMode: incident.replacementMode ?? null,
+        replacementOperator: incident.replacementOperator ?? null,
+        impactedStations: incident.impactedStations ?? null,
         details: (incident.details as Json) || null,
       }));
 

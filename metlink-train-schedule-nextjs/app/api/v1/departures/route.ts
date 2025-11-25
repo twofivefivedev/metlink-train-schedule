@@ -6,17 +6,17 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { SERVICE_IDS, getDefaultStationsForLine, type LineCode, getServiceIdFromLineCode } from '@/lib/constants';
-import { getMultipleStationDepartures, getRequestMetrics } from '@/lib/server/metlinkService';
+import { getMultipleStationDepartures, getRequestMetrics, prewarmStationDepartures } from '@/lib/server/metlinkService';
 import { processDepartures } from '@/lib/server/departureService';
 import { cache } from '@/lib/server/cache';
 import { success } from '@/lib/server/response';
-import { logger } from '@/lib/server/logger';
+import { createLogger, logger } from '@/lib/server/logger';
 import { recordServiceIncidents } from '@/lib/server/incidentsService';
 import { createPerformanceContext, recordPerformanceMetric, recordApiRequestMetric } from '@/lib/server/performance';
 import { withValidation } from '@/lib/server/middleware/withValidation';
 import { withRateLimit } from '@/lib/server/middleware/withRateLimit';
 import { departuresQuerySchema, parseStationsParam } from '@/lib/server/validation/schemas';
-import { createRequestContext, withRequestContext } from '@/lib/server/requestContext';
+import { createRequestContext } from '@/lib/server/requestContext';
 import type { z } from 'zod';
 
 async function baseHandler(
@@ -25,13 +25,48 @@ async function baseHandler(
   validated: z.infer<typeof departuresQuerySchema>
 ) {
   const requestContext = createRequestContext(request);
+  const requestLogger = createLogger(requestContext);
   const perfContext = createPerformanceContext(request, '/api/v1/departures');
   let cacheKey = '';
+  const { line, stations, prewarm } = validated;
+  const isCronRequest = request.headers.has('x-vercel-cron');
+  const manualPrewarmRequested = Boolean(prewarm);
+  const shouldPrewarm = isCronRequest || manualPrewarmRequested;
+  const prewarmPromise = shouldPrewarm
+    ? prewarmStationDepartures({ reason: isCronRequest ? 'cron' : 'manual' }, requestContext)
+    : null;
+  let prewarmSummary: Awaited<ReturnType<typeof prewarmStationDepartures>> | null = null;
+  let prewarmHandled = false;
+  const resolvePrewarm = async () => {
+    if (!prewarmPromise || prewarmHandled) {
+      return prewarmSummary;
+    }
+    prewarmHandled = true;
+    if (isCronRequest) {
+      try {
+        prewarmSummary = await prewarmPromise;
+      } catch (error) {
+        requestLogger.warn('Station cache prewarm failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        prewarmSummary = null;
+      }
+    } else {
+      prewarmPromise.catch((error) => {
+        requestLogger.warn('Station cache prewarm (async) failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+      prewarmSummary = null;
+    }
+    return prewarmSummary;
+  };
+
   try {
     // Verify environment variable is available
     const apiKey = process.env.METLINK_API_KEY;
     if (!apiKey) {
-      logger.error('METLINK_API_KEY is not set in environment variables');
+      requestLogger.error('METLINK_API_KEY is not set in environment variables');
       return NextResponse.json(
         {
           success: false,
@@ -45,13 +80,12 @@ async function baseHandler(
     }
 
     // Get station list and line from query params or use defaults
-    const { line, stations } = validated;
     const stationsParam = stations || null;
     const lineParam = line || 'WRL';
     
     // Validate line code and get service ID
     const serviceId = getServiceIdFromLineCode(lineParam);
-    
+
     // If no stations specified, use all stations for the line
     const parsedStations = parseStationsParam(stationsParam || undefined);
     const stationCodes = parsedStations?.length
@@ -73,6 +107,7 @@ async function baseHandler(
         true
       ).catch(() => {});
 
+      const resolvedPrewarm = await resolvePrewarm();
       const response = NextResponse.json(
         success(
           {
@@ -84,6 +119,15 @@ async function baseHandler(
             cached: true,
             cacheAge: `${cacheAge}s`,
             version: 'v1',
+            ...(resolvedPrewarm
+              ? {
+                  prewarm: {
+                    warmedStations: resolvedPrewarm.warmedStations.length,
+                    reason: resolvedPrewarm.reason,
+                    durationMs: resolvedPrewarm.durationMs,
+                  },
+                }
+              : {}),
           }
         )
       );
@@ -116,7 +160,7 @@ async function baseHandler(
     const allDepartures = [...inbound, ...outbound];
     recordServiceIncidents(allDepartures, stationCodes.join(','))
       .catch((error) => {
-        logger.warn('Failed to record service incidents', {
+        requestLogger.warn('Failed to record service incidents', {
           error: error instanceof Error ? error.message : String(error),
         });
       });
@@ -131,12 +175,26 @@ async function baseHandler(
     ).catch(() => {});
 
     // Return response
-    const response = NextResponse.json(success({
-      inbound,
-      outbound,
-      total,
-      version: 'v1',
-    }));
+    const resolvedPrewarm = await resolvePrewarm();
+    const response = NextResponse.json(
+      success(
+        {
+          inbound,
+          outbound,
+          total,
+          version: 'v1',
+        },
+        resolvedPrewarm
+          ? {
+              prewarm: {
+                warmedStations: resolvedPrewarm.warmedStations.length,
+                reason: resolvedPrewarm.reason,
+                durationMs: resolvedPrewarm.durationMs,
+              },
+            }
+          : undefined
+      )
+    );
     
     recordPerformanceMetric(perfContext, 200, undefined, undefined)
       .catch(() => {});
@@ -144,12 +202,16 @@ async function baseHandler(
     return response;
   } catch (err) {
     const error = err as Error;
-    logger.error('Error fetching departures', withRequestContext({
-      error: error.message,
-      stack: error.stack,
-      name: error.name,
+    requestLogger.error('Error fetching departures', {
+      ...(error instanceof Error ? {
+        error: {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+        },
+      } : { error: String(error) }),
       stations: cacheKey,
-    }, requestContext));
+    });
     
     // Record error metrics
     recordApiRequestMetric(
@@ -164,6 +226,8 @@ async function baseHandler(
     recordPerformanceMetric(perfContext, 500, undefined, undefined, error.message)
       .catch(() => {});
     
+    await resolvePrewarm();
+
     return NextResponse.json(
       {
         success: false,

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/v1/departures?prewarm=true",
+      "schedule": "0 0 * * *"
+    }
+  ]
+}
+

@@ -36,6 +36,11 @@ jest.mock('next-themes', () => ({
   }),
 }));
 
+// Mock useWaitTime hook to return a date matching the mock departure date
+jest.mock('@/hooks/useWaitTime', () => ({
+  useCurrentTime: () => new Date('2024-01-15T09:00:00Z'),
+}));
+
 describe('DepartureBoard', () => {
   const mockDepartures: Departure[] = [
     {

@@ -7,6 +7,12 @@ import { getSupabaseAdminClient } from '../supabaseAdmin';
 import { logger } from '../logger';
 import type { Database, Json } from '@/supabase/types';
 import type { ScheduleConfig, AlertPreferences } from '@/lib/utils/favorites';
+import {
+  parseSelectedStations,
+  safeParseSelectedStations,
+  parseAlertPreferences,
+  safeParseAlertPreferences,
+} from '../validation/preferences';
 
 type User = Database['public']['Tables']['users']['Row'];
 type UserInsert = Database['public']['Tables']['users']['Insert'];
@@ -232,12 +238,22 @@ class PreferencesRepositoryImpl implements PreferencesRepository {
     config: Omit<ScheduleConfig, 'id' | 'createdAt'>
   ): Promise<ScheduleConfig> {
     try {
+      // Validate selectedStations before persisting
+      const parseResult = safeParseSelectedStations(config.selectedStations);
+      if (!parseResult.success) {
+        logger.error('Invalid selectedStations in schedule config', {
+          error: parseResult.error.errors,
+          userInternalId,
+        });
+        throw new Error('Invalid selectedStations: must be a non-empty array of strings');
+      }
+
       const supabase = getSupabaseAdminClient();
       const insertData: ScheduleConfigInsert = {
         userInternalId,
         name: config.name,
         line: config.line,
-        selectedStations: config.selectedStations as unknown as Json,
+        selectedStations: parseResult.data as unknown as Json,
         direction: config.direction,
         selectedStation: config.filters.selectedStation || null,
         routeFilter: config.filters.routeFilter,
@@ -290,11 +306,22 @@ class PreferencesRepositoryImpl implements PreferencesRepository {
   }
 
   private mapScheduleConfigFromDb(config: ScheduleConfigRow): ScheduleConfig {
+    // Validate selectedStations JSON from database
+    const parseResult = safeParseSelectedStations(config.selectedStations);
+    if (!parseResult.success) {
+      logger.error('Invalid selectedStations in database', {
+        error: parseResult.error.errors,
+        configId: config.id,
+      });
+      // Fallback to empty array if invalid
+      throw new Error(`Invalid selectedStations in config ${config.id}: ${parseResult.error.message}`);
+    }
+
     return {
       id: config.id,
       name: config.name,
       line: config.line as any,
-      selectedStations: config.selectedStations as string[],
+      selectedStations: parseResult.data,
       direction: config.direction as 'inbound' | 'outbound',
       filters: {
         selectedStation: config.selectedStation || null,

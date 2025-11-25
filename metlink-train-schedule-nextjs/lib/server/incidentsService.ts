@@ -8,7 +8,7 @@ import { getIncidentsRepository, type ServiceIncidentRecord } from './db';
 import { getIncidentQueue } from './incidentQueue';
 import { logger } from './logger';
 import type { Departure } from '@/types';
-import { getStatusCategory, isBusReplacement } from '@/lib/utils/departureUtils';
+import { getStatusCategory, getStationName, isBusReplacement } from '@/lib/utils/departureUtils';
 
 /**
  * Calculate delay in minutes from departure data
@@ -30,6 +30,68 @@ function getDelayMinutes(departure: Departure): number | null {
   return diffMinutes >= 5 ? diffMinutes : null;
 }
 
+function trimStationName(value?: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  return value.replace(/\s+Station$/i, '').trim();
+}
+
+function buildLineSegment(departure: Departure): string | null {
+  if (departure.disruption?.lineSegment) {
+    return departure.disruption.lineSegment;
+  }
+
+  const originName = departure.station
+    ? trimStationName(getStationName(departure.station))
+    : trimStationName(departure.origin?.name);
+  const destinationName = trimStationName(departure.destination?.name);
+
+  if (originName && destinationName) {
+    if (originName === destinationName) {
+      return originName;
+    }
+    return `${originName} → ${destinationName}`;
+  }
+
+  return originName ?? destinationName ?? null;
+}
+
+interface IncidentContext {
+  cause: string | null;
+  lineSegment: string | null;
+  replacementMode: string | null;
+  replacementOperator: string | null;
+  impactedStations: string[] | null;
+  resolutionEta: string | null;
+  summary: string | null;
+}
+
+function getIncidentContext(departure: Departure): IncidentContext {
+  const replacementMode =
+    departure.disruption?.replacement?.mode ??
+    (isBusReplacement(departure) ? 'bus' : null);
+
+  const replacementOperator =
+    departure.disruption?.replacement?.operator ??
+    (replacementMode ? departure.operator ?? null : null);
+
+  const impactedStations =
+    departure.disruption?.impactedStations && departure.disruption.impactedStations.length > 0
+      ? departure.disruption.impactedStations
+      : null;
+
+  return {
+    cause: departure.disruption?.cause ?? departure.status ?? null,
+    lineSegment: buildLineSegment(departure),
+    replacementMode,
+    replacementOperator,
+    impactedStations,
+    resolutionEta: departure.disruption?.resolutionEta ?? null,
+    summary: departure.disruption?.summary ?? null,
+  };
+}
+
 /**
  * Extract incidents from departures
  * Returns array of incidents to record (cancellations, delays >= 5min, bus replacements)
@@ -41,7 +103,7 @@ export function extractIncidentsFromDepartures(
   const incidents: ServiceIncidentRecord[] = [];
 
   for (const departure of departures) {
-    const status = (departure as unknown as { status?: string }).status;
+    const status = departure.status;
     const category = getStatusCategory(departure);
     const aimedTime = departure.departure?.aimed;
     const expectedTime = departure.departure?.expected;
@@ -54,22 +116,57 @@ export function extractIncidentsFromDepartures(
     const stopId = departure.stop_id || '';
     const destination = departure.destination?.name || 'Unknown';
     const destinationStopId = departure.destination?.stop_id || '';
+    const context = getIncidentContext(departure);
+    const baseIncident = {
+      serviceId,
+      stopId,
+      station: station || departure.station || null,
+      destination,
+      destinationStopId,
+      aimedTime: new Date(aimedTime),
+      expectedTime: expectedTime ? new Date(expectedTime) : null,
+      cause: context.cause,
+      lineSegment: context.lineSegment,
+      replacementMode: context.replacementMode,
+      replacementOperator: context.replacementOperator,
+      impactedStations: context.impactedStations,
+    } satisfies Omit<ServiceIncidentRecord, 'incidentType' | 'delayMinutes' | 'details'>;
+
+    const baseDetails: Record<string, unknown> = {};
+    if (status) {
+      baseDetails.status = status;
+    }
+    if (context.summary) {
+      baseDetails.disruptionSummary = context.summary;
+    }
+    if (context.lineSegment) {
+      baseDetails.lineSegment = context.lineSegment;
+    }
+    if (context.cause) {
+      baseDetails.cause = context.cause;
+    }
+    if (context.resolutionEta) {
+      baseDetails.resolutionEta = context.resolutionEta;
+    }
+    if (context.replacementMode) {
+      baseDetails.replacementMode = context.replacementMode;
+    }
+    if (context.replacementOperator) {
+      baseDetails.replacementOperator = context.replacementOperator;
+    }
+    if (context.impactedStations) {
+      baseDetails.impactedStations = context.impactedStations;
+    }
 
     // Check for cancellation
     if (status === 'canceled' || status === 'cancelled' || category === 'cancelled') {
       incidents.push({
-        serviceId,
-        stopId,
-        station: station || departure.station || null,
-        destination,
-        destinationStopId,
-        aimedTime: new Date(aimedTime),
-        expectedTime: expectedTime ? new Date(expectedTime) : null,
+        ...baseIncident,
         incidentType: 'cancelled',
         delayMinutes: null,
         details: {
-          status,
-          originalStatus: status,
+          ...baseDetails,
+          originalStatus: status ?? 'cancelled',
         },
       });
     }
@@ -77,18 +174,13 @@ export function extractIncidentsFromDepartures(
     // Check for bus replacement
     if (isBusReplacement(departure) || category === 'bus') {
       incidents.push({
-        serviceId,
-        stopId,
-        station: station || departure.station || null,
-        destination,
-        destinationStopId,
-        aimedTime: new Date(aimedTime),
-        expectedTime: expectedTime ? new Date(expectedTime) : null,
+        ...baseIncident,
         incidentType: 'bus_replacement',
         delayMinutes: null,
         details: {
+          ...baseDetails,
           destination: departure.destination?.name,
-          operator: (departure as unknown as { operator?: string }).operator,
+          operator: departure.operator,
         },
       });
     }
@@ -97,18 +189,12 @@ export function extractIncidentsFromDepartures(
     const delayMinutes = getDelayMinutes(departure);
     if (delayMinutes !== null && category === 'delayed') {
       incidents.push({
-        serviceId,
-        stopId,
-        station: station || departure.station || null,
-        destination,
-        destinationStopId,
-        aimedTime: new Date(aimedTime),
-        expectedTime: expectedTime ? new Date(expectedTime) : null,
+        ...baseIncident,
         incidentType: 'delayed',
         delayMinutes: Math.round(delayMinutes),
         details: {
+          ...baseDetails,
           delayMinutes: Math.round(delayMinutes),
-          status,
         },
       });
     }
@@ -178,6 +264,11 @@ export async function getServiceIncidents(options: {
   incidentType: 'cancelled' | 'delayed' | 'bus_replacement';
   delayMinutes: number | null;
   details: Record<string, unknown> | null;
+  cause: string | null;
+  lineSegment: string | null;
+  replacementMode: string | null;
+  replacementOperator: string | null;
+  impactedStations: string[] | null;
   createdAt: Date;
 }>> {
   if (!(await isSupabaseAvailable())) {
@@ -200,6 +291,11 @@ export async function getServiceIncidents(options: {
       incidentType: record.incidentType,
       delayMinutes: record.delayMinutes,
       details: record.details as Record<string, unknown> | null,
+      cause: record.cause ?? null,
+      lineSegment: record.lineSegment ?? null,
+      replacementMode: record.replacementMode ?? null,
+      replacementOperator: record.replacementOperator ?? null,
+      impactedStations: (record.impactedStations as string[] | null) ?? null,
       createdAt: new Date(record.createdAt),
     }));
   } catch (error) {

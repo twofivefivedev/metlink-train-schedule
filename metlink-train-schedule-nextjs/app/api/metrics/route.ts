@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { success } from '@/lib/server/response';
 import { logger } from '@/lib/server/logger';
 import { getPerformanceStats } from '@/lib/server/performance';
+import { getStationCacheMetrics } from '@/lib/server/metlinkService';
 import { getPerformanceRepository } from '@/lib/server/db/performanceRepository';
 
 const performanceRepository = getPerformanceRepository();
@@ -13,9 +14,10 @@ export async function GET(request: NextRequest) {
     const windowSeconds = Number.isFinite(requestedWindow) && requestedWindow > 0 ? requestedWindow : 3600;
     const startDate = new Date(Date.now() - windowSeconds * 1000);
 
-    const [performance, apiRequests] = await Promise.all([
+    const [performance, apiRequests, stationCache] = await Promise.all([
       getPerformanceStats(undefined, startDate, undefined),
       performanceRepository.getApiRequestStats({ startDate }),
+      Promise.resolve(getStationCacheMetrics()),
     ]);
 
     return NextResponse.json(
@@ -24,6 +26,7 @@ export async function GET(request: NextRequest) {
         windowSeconds,
         performance,
         apiRequests,
+        stationCache,
       })
     );
   } catch (error) {

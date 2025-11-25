@@ -12,22 +12,31 @@
 # next.js
 /.next/
 /out/
+/.next/dev/logs/
+/.next/dev/types/
 
 # production
 /build
 
+# build caches
+/.swc/
+
 # misc
 .DS_Store
 *.pem
+Thumbs.db
 
 # debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.log
+logs/
 
 # local env files
 .env*.local
 .env
+*.local
 
 # vercel
 .vercel
@@ -35,5 +44,22 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.sublime-*
+
+# husky
+.husky/_/
+
+# documentation
+/docs/
+*.md
+!README.md
+!app/docs/
 
 /lib/generated/prisma

@@ -60,6 +60,9 @@ class CacheRepositoryImpl implements CacheRepository {
         return null;
       }
 
+      // Type assertion: Json type from Supabase is compatible with DeparturesResponse
+      // The data was stored as DeparturesResponse and should be valid JSON
+      // In a production system, you might want to add runtime validation here
       return {
         data: entry.data as unknown as DeparturesResponse,
         expiresAt: entry.expiresAt,
@@ -77,6 +80,8 @@ class CacheRepositoryImpl implements CacheRepository {
   async set(key: string, data: DeparturesResponse, expiresAt: Date): Promise<void> {
     try {
       const supabase = getSupabaseAdminClient();
+      // Type assertion: DeparturesResponse is a valid JSON-serializable object
+      // Supabase Json type accepts any JSON-compatible value
       const entry: CacheEntryInsert = {
         key,
         data: data as unknown as Json,

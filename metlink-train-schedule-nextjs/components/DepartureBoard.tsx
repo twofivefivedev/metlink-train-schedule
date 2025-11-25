@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Button } from './ui/button';
 import { ArrowLeftRight, AlertTriangle, RefreshCw, Clock, BookmarkPlus } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
@@ -26,6 +27,10 @@ import type { Departure } from '@/types';
 import type { LineCode } from '@/lib/constants';
 import type { SortOption, SortDirection } from '@/lib/utils/sortUtils';
 import type { StaleState } from '@/hooks/useTrainSchedule';
+
+const NOTICE_SAMPLE_SIZE = 50;
+const MAX_WARNING_ITEMS = 12;
+const ESTIMATED_ROW_HEIGHT = 96;
 
 interface DepartureBoardProps {
   departures: Departure[];
@@ -68,19 +73,60 @@ export function DepartureBoard({
 }: DepartureBoardProps) {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [configName, setConfigName] = useState('');
-  const displayedDepartures = departures.slice(0, 10);
   const currentTime = useCurrentTime();
   const { syncFromStorage } = usePreferences();
+  const [startOfTodayMs, endOfTodayMs] = useMemo(() => {
+    const start = new Date(currentTime);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(currentTime);
+    end.setHours(23, 59, 59, 999);
+    return [start.getTime(), end.getTime()];
+  }, [currentTime]);
+  const todaysDepartures = useMemo(() => {
+    if (!departures.length) {
+      return [];
+    }
+    return departures.filter((departure) => {
+      const departureTime = departure.departure?.expected || departure.departure?.aimed;
+      if (!departureTime) {
+        return false;
+      }
+      const departureTimestamp = new Date(departureTime).getTime();
+      return departureTimestamp >= startOfTodayMs && departureTimestamp <= endOfTodayMs;
+    });
+  }, [departures, startOfTodayMs, endOfTodayMs]);
+  const noticeSample = useMemo(
+    () => todaysDepartures.slice(0, NOTICE_SAMPLE_SIZE),
+    [todaysDepartures]
+  );
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: todaysDepartures.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => ESTIMATED_ROW_HEIGHT,
+    overscan: 8,
+    getItemKey: (index) => {
+      const departure = todaysDepartures[index];
+      if (!departure) {
+        return `departure-${index}`;
+      }
+      return (
+        departure.trip_id ||
+        `${departure.service_id}-${departure.station}-${departure.departure?.aimed || index}`
+      );
+    },
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
   
   // Group delayed trains by trip_id to identify which stations belong to the same train
   // Only show expected time on the first station of each delayed train
   const delayedTrainFirstStations = useMemo(() => {
     const delayedTrains = new Map<string, Departure>();
     
-    displayedDepartures.forEach(dep => {
+    todaysDepartures.forEach(dep => {
       const category = getStatusCategory(dep);
       if (category === 'delayed') {
-        const tripId = (dep as unknown as { trip_id?: string }).trip_id;
+        const tripId = dep.trip_id;
         if (tripId) {
           const existing = delayedTrains.get(tripId);
           if (!existing) {
@@ -102,12 +148,12 @@ export function DepartureBoard({
     const firstStationIds = new Set<string>();
     delayedTrains.forEach(dep => {
       // Create unique ID using trip_id + station + aimed time
-      const id = `${(dep as unknown as { trip_id?: string }).trip_id || 'no-trip'}-${dep.station}-${dep.departure?.aimed}`;
+      const id = `${dep.trip_id || 'no-trip'}-${dep.station}-${dep.departure?.aimed}`;
       firstStationIds.add(id);
     });
     
     return firstStationIds;
-  }, [displayedDepartures]);
+  }, [todaysDepartures]);
   
   // Track selected notice for service notice panel
   const [selectedNotice, setSelectedNotice] = useState<{
@@ -118,11 +164,11 @@ export function DepartureBoard({
 
   // Calculate wait time for the next available (non-cancelled, future) departure
   const nextDepartureWaitTime = useMemo(() => {
-    if (displayedDepartures.length === 0) return null;
+    if (todaysDepartures.length === 0) return null;
     
     // Find the first non-cancelled departure that hasn't departed yet
-    const nextAvailableDeparture = displayedDepartures.find(dep => {
-      const status = (dep as unknown as { status?: string }).status;
+    const nextAvailableDeparture = todaysDepartures.find(dep => {
+      const status = dep.status;
       if (status === 'canceled' || status === 'cancelled') {
         return false;
       }
@@ -148,26 +194,25 @@ export function DepartureBoard({
       minutes: waitTime.minutes !== null ? waitTime.minutes : null,
       station: getStationName(nextAvailableDeparture.station),
     };
-  }, [displayedDepartures, currentTime]);
+  }, [todaysDepartures, currentTime]);
 
   // Find departures with notices (cancelled, delayed, bus)
   const departuresWithNotices = useMemo(() => {
-    return displayedDepartures.filter(dep => {
+    return noticeSample.filter(dep => {
       const category = getStatusCategory(dep);
       return category !== 'normal';
-    });
-  }, [displayedDepartures]);
+    }).slice(0, MAX_WARNING_ITEMS);
+  }, [noticeSample]);
 
   // Don't auto-select notice - user must click to see details
   // Only clear selection if the selected departure is no longer in the list
   useEffect(() => {
     if (selectedNotice) {
-      const currentId = (selectedNotice.departure as unknown as { trip_id?: string }).trip_id || 
+      const currentId = selectedNotice.departure.trip_id || 
                        `${selectedNotice.departure.service_id}-${selectedNotice.departure.station}-${selectedNotice.departure.departure?.aimed}`;
       
-      const stillExists = displayedDepartures.some(dep => {
-        const depId = (dep as unknown as { trip_id?: string }).trip_id || 
-                     `${dep.service_id}-${dep.station}-${dep.departure?.aimed}`;
+      const stillExists = todaysDepartures.some(dep => {
+        const depId = dep.trip_id || `${dep.service_id}-${dep.station}-${dep.departure?.aimed}`;
         return depId === currentId;
       });
       
@@ -175,13 +220,13 @@ export function DepartureBoard({
         setSelectedNotice(null);
       }
     }
-  }, [displayedDepartures, selectedNotice]);
+  }, [todaysDepartures, selectedNotice]);
 
   // Collect warnings and alerts - filter out cancelled/delayed/bus (they show in panel)
   const warnings = useMemo(() => {
     const allWarnings: Array<{ type: string; message: string; departure: Departure }> = [];
     
-    displayedDepartures.forEach((departure) => {
+    noticeSample.forEach((departure) => {
       const category = getStatusCategory(departure);
       // Only include "other" notices in the top banner
       if (category === 'normal') {
@@ -204,66 +249,77 @@ export function DepartureBoard({
       }
     });
 
-    return allWarnings;
-  }, [displayedDepartures]);
+    return allWarnings.slice(0, MAX_WARNING_ITEMS);
+  }, [noticeSample]);
 
-  // Get explanation text for a notice
-  const getNoticeExplanation = (departure: Departure, category: StatusCategory, message: string): string => {
-    if (category === 'cancelled') {
-      // Check for cancellation reason in live API data (if available)
-      const cancellationReason = (departure as unknown as { cancellation_reason?: string }).cancellation_reason;
-      if (cancellationReason) {
-        return `This service has been cancelled: ${cancellationReason}. Please check for alternative services.`;
-      }
-      return 'This service has been cancelled. Please check for alternative services.';
+  const sanitizeStationLabel = useCallback((value?: string | null) => {
+    if (!value) {
+      return null;
     }
-    if (category === 'delayed') {
-      // Use the existing parseDelay function to handle ISO 8601 format from live API
-      const delay = parseDelay((departure as unknown as { delay?: string }).delay);
-      if (delay) {
-        return `This service is running ${delay} late. Please allow extra time for your journey.`;
+    return value.replace(/ - Stop [A-Z]$/i, '').replace(/\s+Station$/i, '').trim();
+  }, []);
+
+  const getNoticeSegment = useCallback(
+    (departure: Departure): string | null => {
+      if (departure.disruption?.lineSegment) {
+        return departure.disruption.lineSegment;
       }
-      // Fallback if delay is not available but status indicates delay
-      const status = (departure as unknown as { status?: string }).status;
-      if (status === 'delayed') {
-        return 'This service is delayed. Please allow extra time for your journey.';
-      }
-      // Check if expected time is later than aimed time (indicates delay)
-      const aimed = departure.departure?.aimed;
-      const expected = departure.departure?.expected;
-      if (aimed && expected) {
-        const aimedTime = new Date(aimed).getTime();
-        const expectedTime = new Date(expected).getTime();
-        const delayMs = expectedTime - aimedTime;
-        if (delayMs > 0) {
-          const delayMinutes = Math.floor(delayMs / (1000 * 60));
-          if (delayMinutes >= 5) {
-            return `This service is running approximately ${delayMinutes} minutes late. Please allow extra time for your journey.`;
-          }
+      const originCode = departure.station || departure.origin?.stop_id;
+      const originName = originCode
+        ? sanitizeStationLabel(getStationName(originCode))
+        : sanitizeStationLabel(departure.origin?.name);
+      const destinationName = sanitizeStationLabel(departure.destination?.name);
+
+      if (originName && destinationName) {
+        if (originName === destinationName) {
+          return originName;
         }
+        return `${originName} → ${destinationName}`;
       }
-      return 'This service is delayed. Please allow extra time for your journey.';
+
+      return originName ?? destinationName ?? null;
+    },
+    [sanitizeStationLabel]
+  );
+
+  const formatNoticeEta = useCallback((value: string | null) => {
+    if (!value) {
+      return 'TBD';
     }
-    if (category === 'bus') {
-      // Check for bus replacement details in live API data
-      const destination = departure.destination?.name || '';
-      const origin = (departure as unknown as { origin?: { name?: string } }).origin?.name || '';
-      const operator = (departure as unknown as { operator?: string }).operator || '';
-      
-      // If destination or origin contains bus/replacement info, include it
-      if (destination.toLowerCase().includes('bus') || destination.toLowerCase().includes('replacement')) {
-        return `This service is being replaced by a bus. ${destination}. Please allow extra time for your journey.`;
-      }
-      if (origin.toLowerCase().includes('bus') || origin.toLowerCase().includes('replacement')) {
-        return `This service is being replaced by a bus. ${origin}. Please allow extra time for your journey.`;
-      }
-      if (operator && (operator.toLowerCase().includes('bus') || operator.toLowerCase() === 'bus')) {
-        return 'This service is being replaced by a bus due to operational requirements. Please allow extra time for your journey.';
-      }
-      return 'This service is being replaced by a bus due to operational requirements. Please allow extra time for your journey.';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return 'TBD';
     }
-    return 'Service notice: ' + message;
-  };
+    return date.toLocaleTimeString('en-NZ', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  }, []);
+
+  const structuredNoticeDetails = useMemo(() => {
+    if (!selectedNotice) {
+      return null;
+    }
+    const { departure, message } = selectedNotice;
+    const resolutionEta =
+      departure.disruption?.resolutionEta ||
+      departure.departure?.expected ||
+      departure.departure?.aimed ||
+      null;
+
+    return {
+      cause: departure.disruption?.cause || message || departure.status || null,
+      resolutionEta,
+      segment: getNoticeSegment(departure),
+      impactedStations: departure.disruption?.impactedStations || [],
+      replacementMode:
+        departure.disruption?.replacement?.mode ||
+        (isBusReplacement(departure) ? 'Bus replacement' : null),
+      replacementOperator:
+        departure.disruption?.replacement?.operator || departure.operator || null,
+    };
+  }, [selectedNotice, getNoticeSegment]);
 
   // Handle row/status click to show notice details
   const handleNoticeSelect = (departure: Departure) => {
@@ -491,29 +547,73 @@ export function DepartureBoard({
                 <h2 id="service-notice-heading" className="text-sm font-semibold uppercase tracking-wider mb-3">
                   Service Notice
                 </h2>
-                <div className="space-y-2">
+                <div className="space-y-4">
                   <div className="flex items-center gap-2">
                     <AlertTriangle className={`h-5 w-5 ${getStatusColorClass(selectedNotice.category)}`} aria-hidden="true" />
                     <p className={`text-lg font-bold ${getStatusColorClass(selectedNotice.category)}`}>
                       {selectedNotice.message.toUpperCase()}
                     </p>
                   </div>
-                  <p className="text-xs text-black/70 dark:text-white/70">
-                    {getNoticeExplanation(selectedNotice.departure, selectedNotice.category, selectedNotice.message)}
-                  </p>
-                  <p className="text-xs text-black/70 dark:text-white/70">
-                    {getStationName(selectedNotice.departure.station).replace(' Station', '')} - {
-                      selectedNotice.departure.departure?.expected || selectedNotice.departure.departure?.aimed ? (
-                        <time dateTime={selectedNotice.departure.departure?.expected || selectedNotice.departure.departure?.aimed || ''}>
-                          {new Date(selectedNotice.departure.departure?.expected || selectedNotice.departure.departure?.aimed || '').toLocaleTimeString('en-NZ', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            hour12: false,
+                  <ul className="space-y-3 text-sm text-black dark:text-white">
+                    <li>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-black/60 dark:text-white/60">
+                        Cause
+                      </p>
+                      <p className="mt-1">
+                        {structuredNoticeDetails?.cause || 'Investigating issue'}
+                      </p>
+                    </li>
+                    <li>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-black/60 dark:text-white/60">
+                        Resolution ETA
+                      </p>
+                      <p className="mt-1">
+                        {formatNoticeEta(structuredNoticeDetails?.resolutionEta || null)}
+                      </p>
+                    </li>
+                    <li>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-black/60 dark:text-white/60">
+                        Affected Segment
+                      </p>
+                      <p className="mt-1">
+                        {structuredNoticeDetails?.segment || getStationName(selectedNotice.departure.station).replace(' Station', '')}
+                      </p>
+                      {structuredNoticeDetails?.impactedStations?.length ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {structuredNoticeDetails.impactedStations.slice(0, 6).map((stationCode) => {
+                            const label =
+                              sanitizeStationLabel(getStationName(stationCode)) || stationCode;
+                            return (
+                              <span
+                                key={stationCode}
+                                className="rounded-full border border-black/20 dark:border-white/30 px-2 py-0.5 text-xs uppercase tracking-wide"
+                              >
+                                {label}
+                              </span>
+                            );
                           })}
-                        </time>
-                      ) : '--:--'
-                    }
-                  </p>
+                          {structuredNoticeDetails.impactedStations.length > 6 && (
+                            <span className="text-xs text-black/60 dark:text-white/60">
+                              +{structuredNoticeDetails.impactedStations.length - 6} more
+                            </span>
+                          )}
+                        </div>
+                      ) : null}
+                    </li>
+                    <li>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-black/60 dark:text-white/60">
+                        Replacement Mode
+                      </p>
+                      <p className="mt-1">
+                        {structuredNoticeDetails?.replacementMode || 'Standard service'}
+                      </p>
+                      {structuredNoticeDetails?.replacementOperator && (
+                        <p className="text-xs text-black/60 dark:text-white/60 mt-1">
+                          Operator: {structuredNoticeDetails.replacementOperator}
+                        </p>
+                      )}
+                    </li>
+                  </ul>
                 </div>
               </div>
             )}
@@ -606,7 +706,7 @@ export function DepartureBoard({
               <p className="text-xl font-semibold">Loading schedule...</p>
             </div>
           </div>
-        ) : displayedDepartures.length === 0 ? (
+        ) : todaysDepartures.length === 0 ? (
           <div className="text-center py-16 text-black/70 dark:text-white/70" role="status" aria-live="polite">
             <p className="text-xl font-semibold">No trains scheduled at this time</p>
           </div>
@@ -631,33 +731,61 @@ export function DepartureBoard({
               </div>
             </div>
 
-            {/* Table Rows */}
-            <div className="divide-y-2 divide-black dark:divide-white" role="rowgroup">
-              {displayedDepartures.map((departure, index) => {
-                const departureId = (departure as unknown as { trip_id?: string }).trip_id || 
-                                  `${departure.service_id}-${departure.station}-${departure.departure?.aimed}`;
-                const selectedId = selectedNotice ? 
-                  ((selectedNotice.departure as unknown as { trip_id?: string }).trip_id || 
-                   `${selectedNotice.departure.service_id}-${selectedNotice.departure.station}-${selectedNotice.departure.departure?.aimed}`) : null;
-                
-                // Check if this is the first station of a delayed train
-                // Use the same ID format as in delayedTrainFirstStations
-                const tripId = (departure as unknown as { trip_id?: string }).trip_id || 'no-trip';
-                const stationId = `${tripId}-${departure.station}-${departure.departure?.aimed}`;
-                const isFirstDelayedStation = delayedTrainFirstStations.has(stationId);
-                
-                return (
-                  <DepartureBoardRow
-                    key={`${departureId}-${index}`}
-                    departure={departure}
-                    index={index}
-                    onSelect={handleNoticeSelect}
-                    isSelected={departureId === selectedId}
-                    showExpectedTime={isFirstDelayedStation}
-                    currentTime={currentTime}
-                  />
-                );
-              })}
+            {/* Virtualized Table Rows */}
+            <div
+              ref={tableContainerRef}
+              className="max-h-[70vh] overflow-auto border-t-2 border-black dark:border-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black dark:focus-visible:ring-white"
+              role="rowgroup"
+              aria-label="Train departures list"
+            >
+              <div
+                style={{
+                  height: `${rowVirtualizer.getTotalSize()}px`,
+                  position: 'relative',
+                }}
+              >
+                {virtualRows.map((virtualRow) => {
+                  const departure = todaysDepartures[virtualRow.index];
+                  if (!departure) {
+                    return null;
+                  }
+
+                  const departureId =
+                    departure.trip_id ||
+                    `${departure.service_id}-${departure.station}-${departure.departure?.aimed}`;
+                  const selectedId = selectedNotice
+                    ? selectedNotice.departure.trip_id ||
+                      `${selectedNotice.departure.service_id}-${selectedNotice.departure.station}-${selectedNotice.departure.departure?.aimed}`
+                    : null;
+                  const tripId = departure.trip_id || 'no-trip';
+                  const stationId = `${tripId}-${departure.station}-${departure.departure?.aimed}`;
+                  const isFirstDelayedStation = delayedTrainFirstStations.has(stationId);
+
+                  return (
+                    <div
+                      key={`${departureId}-${virtualRow.index}`}
+                      data-index={virtualRow.index}
+                      ref={rowVirtualizer.measureElement}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      <DepartureBoardRow
+                        departure={departure}
+                        index={virtualRow.index}
+                        onSelect={handleNoticeSelect}
+                        isSelected={departureId === selectedId}
+                        showExpectedTime={isFirstDelayedStation}
+                        currentTime={currentTime}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -795,7 +923,7 @@ const DepartureBoardRow = React.memo(function DepartureBoardRow({
 
   return (
     <div
-      className={`grid grid-cols-3 gap-4 sm:gap-8 px-4 sm:px-8 py-3 sm:py-5 transition-colors ${
+      className={`grid grid-cols-3 gap-4 sm:gap-8 px-4 sm:px-8 py-3 sm:py-5 transition-colors border-b-2 border-black dark:border-white ${
         category !== 'normal' 
           ? 'cursor-pointer hover:bg-black/10 dark:hover:bg-white/10' 
           : 'hover:bg-black/5 dark:hover:bg-white/5'
