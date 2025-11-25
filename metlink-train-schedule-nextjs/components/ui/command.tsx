@@ -21,7 +21,7 @@ function Command({
     <CommandPrimitive
       data-slot="command"
       className={cn(
-        "bg-white dark:bg-black text-black dark:text-white flex h-full w-full flex-col overflow-hidden border-2 border-black dark:border-white rounded-none shadow-[10px_10px_0_#000] dark:shadow-[10px_10px_0_rgba(255,255,255,0.3)]",
+        "bg-white dark:bg-black text-black dark:text-white flex h-full w-full flex-col overflow-hidden border-2 border-black dark:border-white rounded-none shadow-[6px_6px_0_#000] dark:shadow-[6px_6px_0_rgba(255,255,255,0.3)]",
         className
       )}
       {...props}
@@ -52,7 +52,7 @@ function CommandDialog({
       </DialogHeader>
       <DialogContent
         className={cn(
-          "overflow-hidden p-0 border-2 border-black dark:border-white rounded-none bg-white dark:bg-black shadow-[18px_18px_0_rgba(0,0,0,0.85)] dark:shadow-[18px_18px_0_rgba(255,255,255,0.25)]",
+          "overflow-hidden p-0 border-2 border-black dark:border-white rounded-none bg-white dark:bg-black shadow-[10px_10px_0_rgba(0,0,0,0.85)] dark:shadow-[10px_10px_0_rgba(255,255,255,0.25)]",
           className
         )}
         showCloseButton={showCloseButton}

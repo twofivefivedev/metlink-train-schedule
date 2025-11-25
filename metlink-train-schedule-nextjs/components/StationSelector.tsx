@@ -174,7 +174,7 @@ export function StationSelector({
                       className={`w-5 h-5 flex items-center justify-center border-2 border-black dark:border-white transition-colors ${
                         isSelected
                           ? 'bg-black text-white dark:bg-white dark:text-black'
-                          : 'bg-white dark:bg-black text-black dark:text-white'
+                          : 'bg-transparent text-black dark:text-white'
                       }`}
                     >
                       <Check className={`h-3 w-3 ${isSelected ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true" />
